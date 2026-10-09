@@ -97,7 +97,7 @@ target_include_directories(swmm5plus_swmmc PRIVATE "${SWMMC_DIR}")
 # EPA SWMM 5.1 and the SWMM5+ additions predate C23, where "int f()" means a
 # function without arguments (the default of GCC 15 and later).
 set_target_properties(swmm5plus_swmmc PROPERTIES C_STANDARD 11 C_EXTENSIONS ON)
-target_compile_options(swmm5plus_swmmc PRIVATE $<$<C_COMPILER_ID:GNU,Clang,AppleClang>:-fcommon -w>)
+target_compile_options(swmm5plus_swmmc PRIVATE $<$<C_COMPILER_ID:GNU,Clang,AppleClang,IntelLLVM>:-fcommon -w>)
 if(UNIX)
     target_link_libraries(swmm5plus_swmmc PRIVATE m)
 endif()
