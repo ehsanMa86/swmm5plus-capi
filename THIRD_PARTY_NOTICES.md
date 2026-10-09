@@ -22,5 +22,10 @@ swmm5plus-capi is Copyright (C) 2026 Ehsan Madadi and licensed under GPL-3.0-or-
 
 ## HDF5 (The HDF Group)
 
-- Linked from the system or a user installation; not distributed with this project.
-- License: BSD-style HDF5 license, Copyright 2006 by The HDF Group.
+- Source builds link the HDF5 found on the system. The prebuilt release libraries link HDF5 1.14.6 statically, downloaded from https://github.com/HDFGroup/hdf5.
+- License: BSD-style HDF5 license, Copyright 2006 by The HDF Group. The full text is in the COPYING file of the HDF5 distribution.
+
+## GNU Fortran runtime (prebuilt release libraries only)
+
+- `libgfortran` and, where needed, `libquadmath` from GCC are included with the prebuilt libraries.
+- License: GPL-3.0 with the GCC Runtime Library Exception, version 3.1 (`libgfortran`), and LGPL-2.1 (`libquadmath`). Source code is available from https://gcc.gnu.org.

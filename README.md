@@ -24,6 +24,15 @@ Inside the callback, `s5p_get_value` reads node depth and head, and link flow, d
 - For compilers other than Intel Fortran, a set of anchored edits replaces Intel-only extensions with standard Fortran that keeps the Intel behaviour (range array constructors, `INQUIRE(DIRECTORY=)`, DEC component separators, non-integer kind arguments, rank-2 initializers, logical and integer mixing, and writes to unallocated boundary arrays). The list is in [cmake/SourceHooks.cmake](cmake/SourceHooks.cmake).
 - The result is two libraries: `swmm5plus_capi` (the solver and the C API) and `swmm5plus_swmmc` (EPA SWMM 5.1.13 with the SWMM5+ additions, used for input parsing and hydrology). Keep them in the same folder.
 
+## Installing
+
+Each [release](https://github.com/ehsanMa86/swmm5plus-capi/releases) carries prebuilt libraries for `linux-x86_64`, `macos-arm64` and `macos-x86_64`, built by [.github/workflows/release.yml](.github/workflows/release.yml). For each platform there is a manifest, `swmm5plus-capi-<platform>.json` (format `anahita-engine/1`), listing the files, their sizes and SHA-256 checksums. The libraries need no Fortran compiler: HDF5 is linked statically, and the GNU Fortran runtime is included and found next to the libraries (`$ORIGIN` on Linux, `@loader_path` on macOS).
+
+- **With Anahita:** *Tools > Simulation engines > Install SWMM5+*, or `anahita-cli engines install swmm5plus-capi-<platform>.json` with the files in the same folder as the manifest.
+- **Other applications:** put all files of one platform into one folder, dropping the `swmm5plus-capi-<version>-<platform>-` prefix of the asset names (the manifest gives each file's `name`), and load `libswmm5plus_capi` from there.
+
+To publish a release, push a tag such as `v0.1.0`. The workflow builds and tests every platform, runs `tools/package_release.py`, and attaches the files to the GitHub release.
+
 ## Building
 
 Requirements: CMake 3.21+, a C compiler, a Fortran compiler (Intel ifx/ifort or GNU gfortran 11+), and HDF5 with Fortran support.
@@ -45,7 +54,7 @@ The build runs SWMM5+ in single-image coarray mode (`-fcoarray=single` or `-coar
 |---|---|---|
 | Linux | gfortran 13 | Builds and passes the test: the EXTRAN example runs all 8 simulated hours (241,045 time steps) through the C API, with progress callbacks and clean finalization. |
 | Linux | Intel ifx | Supported by SWMM5+ upstream; built in CI. |
-| macOS | gfortran (Homebrew) | Expected to work as on Linux; not yet tested. |
+| macOS | gfortran (Homebrew) | Built and tested by the release workflow on Apple silicon and Intel runners. |
 | Windows | any | Experimental: SWMM5+ calls `cp`, `rm` and `mkdir` through the shell, which Windows does not provide. |
 
 **SWMM5+ bugs fixed by the build.** Making SWMM5+ run under gfortran exposed two memory errors in SWMM5+ itself that the Intel build happens to survive. Both are corrected for every compiler and should be reported upstream:
