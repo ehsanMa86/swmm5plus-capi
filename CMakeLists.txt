@@ -98,6 +98,11 @@ target_include_directories(swmm5plus_swmmc PRIVATE "${SWMMC_DIR}")
 # function without arguments (the default of GCC 15 and later).
 set_target_properties(swmm5plus_swmmc PROPERTIES C_STANDARD 11 C_EXTENSIONS ON)
 target_compile_options(swmm5plus_swmmc PRIVATE $<$<C_COMPILER_ID:GNU,Clang,AppleClang,IntelLLVM>:-fcommon -w>)
+# No fused multiply-add: on ARM64 (Apple silicon) the compilers fuse a*b+c by
+# default, so expressions such as FTTOM(z) - FTTOM(z) in api.c leave a rounding
+# residue (e.g. an outfall initial depth of -2e-15 m, which SWMM5+ rejects).
+# This keeps results identical to x86-64, where FMA is not used by default.
+target_compile_options(swmm5plus_swmmc PRIVATE $<$<C_COMPILER_ID:GNU,Clang,AppleClang>:-ffp-contract=off>)
 if(UNIX)
     target_link_libraries(swmm5plus_swmmc PRIVATE m)
 endif()
@@ -151,7 +156,8 @@ endif()
 
 # --- Fortran flags -------------------------------------------------------------
 if(CMAKE_Fortran_COMPILER_ID STREQUAL "GNU")
-    set(S5P_FFLAGS -fcoarray=single -ffree-line-length-none -fno-range-check -cpp)
+    # -ffp-contract=off: no fused multiply-add on ARM64, as for the EPA SWMM library.
+    set(S5P_FFLAGS -fcoarray=single -ffree-line-length-none -fno-range-check -cpp -ffp-contract=off)
 elseif(S5P_INTEL)
     set(S5P_FFLAGS -coarray=single -fpp)
 else()

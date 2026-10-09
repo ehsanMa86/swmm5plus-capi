@@ -49,6 +49,41 @@ jobs:
       - name: API test (full EXTRAN simulation through the C API)
         run: ctest --test-dir build --output-on-failure
 
+  # Apple silicon: the release builds for it, and ARM64 floating point (fused
+  # multiply-add) can differ from the x86-64 jobs.
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          brew install gcc cmake
+          echo "FC=$(ls $(brew --prefix)/bin/gfortran-* | sort -V | tail -1)" >> "$GITHUB_ENV"
+
+      - name: Cache HDF5
+        id: hdf5
+        uses: actions/cache@v4
+        with:
+          path: ~/hdf5
+          key: hdf5-${{ env.HDF5_VERSION }}-macos-14-static-v1
+
+      - name: Build static HDF5 with Fortran
+        if: steps.hdf5.outputs.cache-hit != 'true'
+        run: |
+          curl -sSL -o hdf5.tar.gz "https://github.com/HDFGroup/hdf5/releases/download/hdf5_${HDF5_VERSION}/hdf5-${HDF5_VERSION}.tar.gz"
+          echo "${HDF5_SHA256}  hdf5.tar.gz" | shasum -a 256 -c
+          tar xzf hdf5.tar.gz
+          cmake -S "hdf5-${HDF5_VERSION}" -B hdf5-build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$HOME/hdf5" \
+            -DHDF5_BUILD_FORTRAN=ON -DBUILD_SHARED_LIBS=OFF -DBUILD_STATIC_LIBS=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DBUILD_TESTING=OFF -DHDF5_BUILD_EXAMPLES=OFF -DHDF5_BUILD_TOOLS=OFF -DHDF5_BUILD_UTILS=OFF \
+            -DHDF5_ENABLE_Z_LIB_SUPPORT=OFF -DHDF5_ENABLE_SZIP_SUPPORT=OFF
+          cmake --build hdf5-build -j4
+          cmake --install hdf5-build
+
+      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$HOME/hdf5"
+      - run: cmake --build build -j4
+      - name: API test (full EXTRAN simulation through the C API)
+        run: ctest --test-dir build --output-on-failure
+
   intel:
     runs-on: ubuntu-24.04
     steps:
