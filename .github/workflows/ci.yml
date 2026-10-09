@@ -79,10 +79,26 @@ jobs:
           cmake --build hdf5-build -j4
           cmake --install hdf5-build
 
-      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$HOME/hdf5"
+      # -g: function names and line numbers for the backtrace below.
+      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$HOME/hdf5" -DCMAKE_C_FLAGS=-g -DCMAKE_Fortran_FLAGS=-g
       - run: cmake --build build -j4
       - name: API test (full EXTRAN simulation through the C API)
+        # Unbuffered Fortran output, so the log ends where the program stopped.
+        env:
+          GFORTRAN_UNBUFFERED_ALL: "1"
         run: ctest --test-dir build --output-on-failure
+
+      # The test can abort (SIGABRT) without any message; rerun it under the
+      # debugger and print the backtrace of every thread at the crash.
+      - name: Backtrace of the failed test
+        if: failure()
+        env:
+          GFORTRAN_UNBUFFERED_ALL: "1"
+        run: |
+          exe=$(find build -name s5p_test -type f -perm -u+x | head -1)
+          lib=$(dirname "$(find build -name 'libswmm5plus_swmmc*.dylib' | head -1)")
+          lldb --batch -o run -k "thread backtrace all" -k "quit 1" -- \
+            "$exe" "$PWD/tests/data/extran4.inp" "$PWD/build/lldb-output" "$lib" 2>&1 | grep -v "^time step\|^ *$"
 
   intel:
     runs-on: ubuntu-24.04
