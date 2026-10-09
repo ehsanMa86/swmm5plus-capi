@@ -28,7 +28,9 @@ Usage:
 
 The script installs the build into a staging folder, copies the Fortran
 runtime libraries the solver needs next to the two engine libraries, makes
-them load from their own folder ($ORIGIN or @loader_path), and writes:
+them load from their own folder ($ORIGIN or @loader_path), and writes the
+files below. On Windows the runtime is linked statically, and the script
+checks that the DLLs depend on system DLLs only.
 
     dist/swmm5plus-capi-<version>-<platform>-<file>   one asset per file
     dist/swmm5plus-capi-<platform>.json               manifest (stable name)
@@ -108,6 +110,21 @@ def macos_runtime(libs: list[Path], stage: Path) -> list[Path]:
     return bundled
 
 
+def windows_runtime(libs: list[Path], stage: Path) -> list[Path]:
+    """The MinGW build links the GCC and Fortran runtimes statically (see
+    CMakeLists.txt). Check that the DLLs depend on Windows system DLLs only,
+    because a separate libgcc_s_seh-1.dll or libwinpthread-1.dll could clash
+    with the copies a host application has already loaded."""
+    runtime = re.compile(r"^(libgfortran|libgcc_s|libwinpthread|libquadmath|libstdc\+\+|libhdf5|libgomp)", re.I)
+    for lib in libs:
+        imports = re.findall(r"DLL Name:\s*(\S+)", run(["objdump", "-p", str(lib)]))
+        bad = [d for d in imports if runtime.match(d)]
+        if bad:
+            raise SystemExit(f"{lib.name} depends on {', '.join(bad)}; link the runtime statically")
+        print(f"{lib.name} imports: {', '.join(sorted(set(imports)))}")
+    return []
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--build", required=True, type=Path)
@@ -117,10 +134,9 @@ def main() -> int:
 
     root = Path(__file__).resolve().parent.parent
     plat = platform_id()
-    if plat.startswith("windows"):
-        print("SWMM5+ is not supported on Windows yet", file=sys.stderr)
-        return 1
-    ext = ".dylib" if plat.startswith("macos") else ".so"
+    windows = plat.startswith("windows")
+    ext = ".dll" if windows else ".dylib" if plat.startswith("macos") else ".so"
+    lib_prefix = "" if windows else "lib"
 
     with tempfile.TemporaryDirectory() as tmp:
         prefix = Path(tmp) / "prefix"
@@ -128,7 +144,7 @@ def main() -> int:
         stage = Path(tmp) / "stage"
         stage.mkdir()
         libs = []
-        for stem in ("libswmm5plus_capi", "libswmm5plus_swmmc"):
+        for stem in (lib_prefix + "swmm5plus_capi", lib_prefix + "swmm5plus_swmmc"):
             found = list(prefix.rglob(stem + ext))
             if not found:
                 print(f"{stem}{ext} not found in the install tree", file=sys.stderr)
@@ -136,7 +152,12 @@ def main() -> int:
             target = stage / (stem + ext)
             shutil.copy2(found[0].resolve(), target)
             libs.append(target)
-        bundled = macos_runtime(libs, stage) if plat.startswith("macos") else linux_runtime(libs, stage)
+        if windows:
+            bundled = windows_runtime(libs, stage)
+        elif plat.startswith("macos"):
+            bundled = macos_runtime(libs, stage)
+        else:
+            bundled = linux_runtime(libs, stage)
         shutil.copy2(root / "LICENSE", stage / "swmm5plus-capi-LICENSE.txt")
         shutil.copy2(root / "THIRD_PARTY_NOTICES.md", stage / "swmm5plus-capi-THIRD_PARTY_NOTICES.md")
 

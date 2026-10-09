@@ -25,6 +25,7 @@
 #if defined(_WIN32)
 #include <windows.h>
 #include <stdlib.h>
+#include <string.h>
 #else
 #include <dlfcn.h>
 #include <limits.h>
@@ -34,19 +35,29 @@
 #endif
 #include <stdio.h>
 
+/* SWMM5+ calls these through Fortran interfaces (see c_library.f90). They
+ * are used inside this library only; on Windows the exported functions are
+ * the ones listed in the generated module-definition file (CMakeLists.txt). */
 #if defined(_WIN32)
-#define S5P_EXPORT __declspec(dllexport)
+#define S5P_EXPORT
 #else
 #define S5P_EXPORT __attribute__((visibility("default")))
 #endif
-
-/* SWMM5+ calls these through Fortran interfaces (see c_library.f90). */
 
 S5P_EXPORT void* s5p_dlopen(const char* filename, int mode)
 {
 #if defined(_WIN32)
     (void)mode;
-    return (void*)LoadLibraryExA(filename, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
+    if (!filename)
+        return NULL;
+    /* LOAD_WITH_ALTERED_SEARCH_PATH requires backslashes. */
+    char path[MAX_PATH * 4];
+    const size_t n = strlen(filename);
+    if (n >= sizeof path)
+        return NULL;
+    for (size_t i = 0; i <= n; ++i)
+        path[i] = filename[i] == '/' ? '\\' : filename[i];
+    return (void*)LoadLibraryExA(path, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
 #else
     (void)mode;
     return dlopen(filename, RTLD_NOW | RTLD_LOCAL);
@@ -81,6 +92,10 @@ int s5p_absolute_path(const char* path, char* out, int length)
 #if defined(_WIN32)
     if (!_fullpath(out, path, (size_t)length))
         return -1;
+    /* SWMM5+ splits and joins paths at "/", which Windows also accepts. */
+    for (char* c = out; *c; ++c)
+        if (*c == '\\')
+            *c = '/';
     return 0;
 #else
     if (path[0] == '/')

@@ -27,7 +27,14 @@ project(swmm5plus_capi VERSION 0.1.0
     LANGUAGES C Fortran)
 
 option(S5P_BUILD_TESTS "Build the C test program" ON)
-option(S5P_BUILD_EXECUTABLE "Build the SWMM5+ command-line program as well" ON)
+# On Windows the SWMM5+ program would share Fortran module variables with the
+# DLL, which Windows does not support; Windows builds provide the library only.
+if(WIN32)
+    set(_s5p_exe_default OFF)
+else()
+    set(_s5p_exe_default ON)
+endif()
+option(S5P_BUILD_EXECUTABLE "Build the SWMM5+ command-line program as well" ${_s5p_exe_default})
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
@@ -36,11 +43,6 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_Fortran_MODULE_DIRECTORY "${PROJECT_BINARY_DIR}/modules")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
-
-if(WIN32)
-    message(WARNING "SWMM5+ runs shell commands (cp, rm) that Windows does not provide; "
-                    "Windows builds are experimental.")
-endif()
 
 include(FetchContent)
 include(GNUInstallDirs)
@@ -84,10 +86,17 @@ foreach(pair "add_to_controls.c;controls.c" "add_to_funcs.h;funcs.h" "add_to_lid
     file(READ "${S5P_UPSTREAM}/interface/${from}" extra)
     file(APPEND "${SWMMC_DIR}/${to}" "${extra}")
 endforeach()
+# api.c (from SWMM5+) calls the POSIX mkdir(path, mode) in an unused export
+# function; Windows provides _mkdir(path).
+s5p_replace("${SWMMC_DIR}/api.c" "#include <unistd.h>\n"
+    "#include <unistd.h>\n#if defined(_WIN32)\n#include <direct.h>\n#define mkdir(path, mode) _mkdir(path)\n#endif\n")
 file(GLOB SWMMC_SOURCES "${SWMMC_DIR}/*.c")
 list(FILTER SWMMC_SOURCES EXCLUDE REGEX "/main\\.c$")
 add_library(swmm5plus_swmmc SHARED ${SWMMC_SOURCES})
 target_include_directories(swmm5plus_swmmc PRIVATE "${SWMMC_DIR}")
+# EPA SWMM 5.1 and the SWMM5+ additions predate C23, where "int f()" means a
+# function without arguments (the default of GCC 15 and later).
+set_target_properties(swmm5plus_swmmc PROPERTIES C_STANDARD 11 C_EXTENSIONS ON)
 target_compile_options(swmm5plus_swmmc PRIVATE $<$<C_COMPILER_ID:GNU,Clang,AppleClang>:-fcommon -w>)
 if(UNIX)
     target_link_libraries(swmm5plus_swmmc PRIVATE m)
@@ -153,17 +162,39 @@ add_library(swmm5plus_capi SHARED
     src/capi_state.F90
     src/swmm5plus_capi.f90
     src/s5p_dl.c
+    src/s5p_fs.c
     ${JSON_FORTRAN_SOURCES}
     ${S5P_FORTRAN})
 target_include_directories(swmm5plus_capi
     PUBLIC  "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
     PRIVATE "${JSONF_UPSTREAM}/src")
 target_compile_options(swmm5plus_capi PRIVATE $<$<COMPILE_LANGUAGE:Fortran>:${S5P_FFLAGS}>)
-target_compile_definitions(swmm5plus_capi PRIVATE SWMM5PLUS_CAPI_BUILD)
+target_compile_definitions(swmm5plus_capi PRIVATE SWMM5PLUS_CAPI_BUILD
+    $<$<PLATFORM_ID:Windows>:S5P_WINDOWS> $<$<PLATFORM_ID:Darwin>:S5P_APPLE>)
 target_link_libraries(swmm5plus_capi PRIVATE ${S5P_HDF5} ${CMAKE_DL_LIBS})
 add_dependencies(swmm5plus_capi swmm5plus_swmmc)
 if(WIN32)
     set_target_properties(swmm5plus_capi PROPERTIES PREFIX "")
+    # The C API is implemented in Fortran (bind(C)), so its functions carry no
+    # dllexport attribute. Export exactly the functions declared in the public
+    # header through a module-definition file.
+    file(STRINGS "${PROJECT_SOURCE_DIR}/include/swmm5plus.h" _s5p_decls REGEX "^S5P_API ")
+    set(_s5p_def "LIBRARY swmm5plus_capi\nEXPORTS\n")
+    foreach(_decl IN LISTS _s5p_decls)
+        if(_decl MATCHES "(s5p_[a-z0-9_]+)\\(")
+            string(APPEND _s5p_def "    ${CMAKE_MATCH_1}\n")
+        endif()
+    endforeach()
+    file(WRITE "${PROJECT_BINARY_DIR}/swmm5plus_capi.def" "${_s5p_def}")
+    target_sources(swmm5plus_capi PRIVATE "${PROJECT_BINARY_DIR}/swmm5plus_capi.def")
+endif()
+# With MinGW, link the GCC, Fortran and threads runtimes into the libraries.
+# Host applications built with another MinGW release load their own copies of
+# libgcc_s_seh-1.dll and libwinpthread-1.dll, and Windows reuses a DLL that is
+# already loaded under the same name, so separate runtime DLLs could clash.
+if(MINGW)
+    target_link_options(swmm5plus_capi PRIVATE -static)
+    target_link_options(swmm5plus_swmmc PRIVATE -static)
 endif()
 if(APPLE)
     set_target_properties(swmm5plus_capi swmm5plus_swmmc PROPERTIES INSTALL_RPATH "@loader_path")

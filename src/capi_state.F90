@@ -21,9 +21,10 @@
 !
 ! SPDX-License-Identifier: GPL-3.0-or-later
 module capi_state
-    !% Compiled before the SWMM5+ modules. The build adds three small hooks to
-    !% the SWMM5+ sources that use this module:
+    !% Compiled before the SWMM5+ modules. The build adds small hooks to the
+    !% SWMM5+ sources that use this module:
     !%   - utility_files: skip command-line parsing when capi_active is true,
+    !%                    and manage folders and files without a shell,
     !%   - timeloop:      call capi_progress_stop once per time step,
     !%   - interface:     load the EPA SWMM library named capi_swmmc_library.
     use iso_c_binding
@@ -39,6 +40,10 @@ module capi_state
     public :: capi_progress_stop
     public :: capi_set_error
     public :: s5p_range
+    public :: s5p_folder_exists
+    public :: s5p_make_folder
+    public :: s5p_copy_file
+    public :: s5p_delete_file
 
     !% True while SWMM5+ is driven through the C interface.
     logical :: capi_active = .false.
@@ -49,9 +54,11 @@ module capi_state
     character(len=1024) :: capi_error_message = ''
 
     !% File name of the EPA SWMM library built next to this one.
-#if defined(_WIN32)
+    !% The Fortran preprocessor does not reliably predefine platform macros,
+    !% so CMakeLists.txt passes S5P_WINDOWS or S5P_APPLE.
+#if defined(S5P_WINDOWS) || defined(_WIN32)
     character(len=*), parameter :: capi_swmmc_library = 'swmm5plus_swmmc.dll'
-#elif defined(__APPLE__)
+#elif defined(S5P_APPLE) || defined(__APPLE__)
     character(len=*), parameter :: capi_swmmc_library = 'libswmm5plus_swmmc.dylib'
 #else
     character(len=*), parameter :: capi_swmmc_library = 'libswmm5plus_swmmc.so'
@@ -65,6 +72,31 @@ module capi_state
             type(c_ptr), value    :: user
             integer(c_int)        :: stop_flag
         end function progress_fn
+    end interface
+
+    !% Folder and file operations in src/s5p_fs.c. They replace the shell
+    !% commands (mkdir, cp, rm) that SWMM5+ runs with execute_command_line.
+    interface
+        function c_folder_exists(path) bind(C, name='s5p_fs_folder_exists') result(rc)
+            import :: c_char, c_int
+            character(kind=c_char), dimension(*), intent(in) :: path
+            integer(c_int) :: rc
+        end function c_folder_exists
+        function c_make_folder(path) bind(C, name='s5p_fs_make_folder') result(rc)
+            import :: c_char, c_int
+            character(kind=c_char), dimension(*), intent(in) :: path
+            integer(c_int) :: rc
+        end function c_make_folder
+        function c_copy_file(from, to) bind(C, name='s5p_fs_copy_file') result(rc)
+            import :: c_char, c_int
+            character(kind=c_char), dimension(*), intent(in) :: from, to
+            integer(c_int) :: rc
+        end function c_copy_file
+        function c_delete_file(path) bind(C, name='s5p_fs_delete_file') result(rc)
+            import :: c_char, c_int
+            character(kind=c_char), dimension(*), intent(in) :: path
+            integer(c_int) :: rc
+        end function c_delete_file
     end interface
 
 contains
@@ -97,5 +129,38 @@ contains
             values(k) = first + k - 1
         end do
     end function s5p_range
+
+    logical function s5p_folder_exists(path)
+        !% Standard replacement for the Intel extension INQUIRE(DIRECTORY=).
+        character(len=*), intent(in) :: path
+        s5p_folder_exists = c_folder_exists(trim(path) // c_null_char) /= 0
+    end function s5p_folder_exists
+
+    subroutine s5p_make_folder(path, istat, cmsg)
+        !% Replaces "mkdir path" run through the shell; also creates missing
+        !% parent folders. istat is 0 on success, as with cmdstat/exitstat.
+        character(len=*), intent(in) :: path
+        integer, intent(out), optional :: istat
+        character(len=*), intent(inout), optional :: cmsg
+        integer(c_int) :: rc
+        rc = c_make_folder(trim(path) // c_null_char)
+        if (present(istat)) istat = int(rc)
+        if (present(cmsg) .and. rc /= 0) write (cmsg, '(A,I0,A)') 'cannot create the folder (system error ', rc, ')'
+    end subroutine s5p_make_folder
+
+    subroutine s5p_copy_file(from, to)
+        !% Replaces "cp from to" run through the shell.
+        character(len=*), intent(in) :: from, to
+        integer(c_int) :: rc
+        rc = c_copy_file(trim(from) // c_null_char, trim(to) // c_null_char)
+        if (rc /= 0) write (*, '(A,I0,A)') 'WARNING: could not copy ' // trim(from) // ' (system error ', rc, ')'
+    end subroutine s5p_copy_file
+
+    subroutine s5p_delete_file(path)
+        !% Replaces "rm path" run through the shell.
+        character(len=*), intent(in) :: path
+        integer(c_int) :: rc
+        rc = c_delete_file(trim(path) // c_null_char)
+    end subroutine s5p_delete_file
 
 end module capi_state

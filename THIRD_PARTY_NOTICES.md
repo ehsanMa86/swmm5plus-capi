@@ -27,5 +27,11 @@ swmm5plus-capi is Copyright (C) 2026 Ehsan Madadi and licensed under GPL-3.0-or-
 
 ## GNU Fortran runtime (prebuilt release libraries only)
 
-- `libgfortran` and, where needed, `libquadmath` from GCC are included with the prebuilt libraries.
+- Linux and macOS: `libgfortran` and, where needed, `libquadmath` from GCC are included next to the prebuilt libraries.
+- Windows: `libgfortran`, `libquadmath` and `libgcc` are linked statically into the two DLLs, so that they do not clash with runtime DLLs a host application has already loaded.
 - License: GPL-3.0 with the GCC Runtime Library Exception, version 3.1 (`libgfortran`), and LGPL-2.1 (`libquadmath`). Source code is available from https://gcc.gnu.org.
+
+## MinGW-w64 runtime (prebuilt Windows libraries only)
+
+- The Windows DLLs are built with MinGW-w64 GCC, and its startup code and `winpthreads` library are linked statically.
+- License: the MinGW-w64 runtime is covered by the Zope Public License 2.1 and public-domain dedications; `winpthreads` by an MIT-style license. See https://www.mingw-w64.org.

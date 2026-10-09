@@ -32,6 +32,7 @@ permissions:
 
 env:
   HDF5_VERSION: "1.14.6"
+  HDF5_SHA256: "e4defbac30f50d64e1556374aa49e574417c9e72c6b1de7a4ff88c4b1bea6e9b"
 
 jobs:
   build:
@@ -67,6 +68,7 @@ jobs:
         if: steps.hdf5.outputs.cache-hit != 'true'
         run: |
           curl -sSL -o hdf5.tar.gz "https://github.com/HDFGroup/hdf5/releases/download/hdf5_${HDF5_VERSION}/hdf5-${HDF5_VERSION}.tar.gz"
+          echo "${HDF5_SHA256}  hdf5.tar.gz" | shasum -a 256 -c
           tar xzf hdf5.tar.gz
           cmake -S "hdf5-${HDF5_VERSION}" -B hdf5-build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$HOME/hdf5" \
             -DHDF5_BUILD_FORTRAN=ON -DBUILD_SHARED_LIBS=OFF -DBUILD_STATIC_LIBS=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
@@ -91,8 +93,71 @@ jobs:
           name: swmm5plus-capi-${{ matrix.os }}
           path: dist/*
 
+  # Windows: MinGW-w64 GCC from MSYS2 (MINGW64, the msvcrt runtime used by
+  # Qt's MinGW builds). The GCC and Fortran runtimes are linked statically.
+  build-windows:
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-gcc-fortran
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-python
+            tar
+
+      - name: Cache HDF5
+        id: hdf5
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/hdf5
+          key: hdf5-${{ env.HDF5_VERSION }}-windows-mingw64-static-v1
+
+      # HDF5 1.14.6 with GCC 14 or later on MinGW: _Float16 lacks FLT16_MAX, and one
+      # Fortran stub (external files, unused by SWMM5+) mixes pointer types.
+      - name: Build static HDF5 with Fortran
+        if: steps.hdf5.outputs.cache-hit != 'true'
+        run: |
+          H="$(cygpath -m '${{ runner.temp }}')/hdf5"
+          curl -sSL -o hdf5.tar.gz "https://github.com/HDFGroup/hdf5/releases/download/hdf5_${HDF5_VERSION}/hdf5-${HDF5_VERSION}.tar.gz"
+          echo "${HDF5_SHA256}  hdf5.tar.gz" | sha256sum -c
+          tar xzf hdf5.tar.gz
+          cmake -G Ninja -S "hdf5-${HDF5_VERSION}" -B hdf5-build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$H" \
+            -DHDF5_BUILD_FORTRAN=ON -DBUILD_SHARED_LIBS=OFF -DBUILD_STATIC_LIBS=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DBUILD_TESTING=OFF -DHDF5_BUILD_EXAMPLES=OFF -DHDF5_BUILD_TOOLS=OFF -DHDF5_BUILD_UTILS=OFF \
+            -DHDF5_ENABLE_Z_LIB_SUPPORT=OFF -DHDF5_ENABLE_SZIP_SUPPORT=OFF \
+            -DHDF5_ENABLE_NONSTANDARD_FEATURE_FLOAT16=OFF -DCMAKE_C_FLAGS=-Wno-error=incompatible-pointer-types
+          cmake --build hdf5-build
+          cmake --install hdf5-build
+
+      - name: Build
+        run: |
+          H="$(cygpath -m '${{ runner.temp }}')/hdf5"
+          cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$H"
+          cmake --build build
+
+      - name: Test (full EXTRAN simulation through the C API)
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package
+        run: python tools/package_release.py --build build --out dist --version "${GITHUB_REF_NAME#v}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: swmm5plus-capi-windows
+          path: dist/*
+
   publish:
-    needs: build
+    needs: [build, build-windows]
     runs-on: ubuntu-24.04
     if: startsWith(github.ref, 'refs/tags/')
     steps:

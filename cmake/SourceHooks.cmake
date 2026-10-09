@@ -45,7 +45,7 @@ function(s5p_apply_hooks dir intel)
     # 1. API mode: do not read the host program's command line.
     s5p_replace("${dir}/utility/utility_files.f90"
         "    use utility_crash, only: util_crashpoint\n"
-        "    use utility_crash, only: util_crashpoint\n    use capi_state, only: capi_active\n")
+        "    use utility_crash, only: util_crashpoint\n    use capi_state, only: capi_active, &\n        s5p_folder_exists, s5p_make_folder, s5p_copy_file, s5p_delete_file\n")
     s5p_replace("${dir}/utility/utility_files.f90"
         "        do while (ii <= iargc())"
         "        if (capi_active) return\n        do while (ii <= iargc())")
@@ -106,12 +106,62 @@ function(s5p_apply_hooks dir intel)
         "setting%Output%Report.TimeInterval"
         "setting%Output%Report%TimeInterval")
 
-    # 6. IFPORT is an Intel Fortran module; the functions SWMM5+ uses from it
+    # 6. No shell commands. SWMM5+ runs mkdir, cp and rm with
+    #    execute_command_line; Windows has no cp or rm, and its mkdir reads
+    #    "/name" as an option. Each call becomes a call to the portable
+    #    functions in src/s5p_fs.c, and folder tests use them instead of the
+    #    Intel extension INQUIRE(DIRECTORY=).
+    s5p_no_shell_commands("${dir}/utility/utility_files.f90")
+    #    Absolute paths: SWMM5+ recognises only paths that start with "/".
+    #    Windows paths such as "C:/model" are absolute too.
+    s5p_replace("${dir}/utility/utility_files.f90"
+        "        elseif (input_path(:1) .eq. '/') then"
+        "        elseif (input_path(:1) .eq. '/' .or. input_path(2:2) .eq. ':') then")
+    s5p_replace("${dir}/utility/utility_files.f90"
+        "if (thisfolder(:1) == '/') then"
+        "if (thisfolder(:1) == '/' .or. thisfolder(2:2) == ':') then")
+
+    # 7. IFPORT is an Intel Fortran module; the functions SWMM5+ uses from it
     #    (getcwd, iargc, getarg) are also GNU extensions.
     if(NOT intel)
         s5p_replace("${dir}/initialization/initialization.f90" "    use IFPORT\n" "")
         s5p_replace("${dir}/utility/utility_files.f90" "    use ifport\n" "")
         s5p_portable_fortran("${dir}")
+    endif()
+endfunction()
+
+# Replaces the shell commands and folder tests in utility_files.f90.
+function(s5p_no_shell_commands f)
+    file(READ "${f}" content)
+    # mkdir with a status and message: three calls, each over two lines.
+    set(mkdir_re "call execute_command_line \\(\\('mkdir '//trim\\(([A-Za-z0-9_%]+)\\)\\),[ \t]*&[ \t\r]*\n[ \t]*(cmdstat|exitstat)=istat, cmdmsg=cmsg\\)")
+    string(REGEX MATCHALL "${mkdir_re}" found "${content}")
+    list(LENGTH found count)
+    if(NOT count EQUAL 3)
+        message(FATAL_ERROR "swmm5plus-capi: expected 3 mkdir commands with a status in ${f}, found ${count}")
+    endif()
+    string(REGEX REPLACE "${mkdir_re}" "call s5p_make_folder(trim(\\1), istat, cmsg)" content "${content}")
+    file(WRITE "${f}" "${content}")
+
+    s5p_replace("${f}" "call execute_command_line( ('mkdir '//trim(newfolder)) )"
+                       "call s5p_make_folder(trim(newfolder))")
+    s5p_replace("${f}" "call execute_command_line (('cp '//trim(setting%File%inp_file)//' '//trim(newfilename)))"
+                       "call s5p_copy_file(trim(setting%File%inp_file), trim(newfilename))")
+    s5p_replace("${f}" "call execute_command_line (('rm '//setting%File%inp_file))"
+                       "call s5p_delete_file(setting%File%inp_file)")
+
+    s5p_replace("${f}" "inquire (DIRECTORY=trim(setting%File%output_timestamp_subfolder),EXIST=isfolder)"
+                       "isfolder = s5p_folder_exists(trim(setting%File%output_timestamp_subfolder))")
+    s5p_replace("${f}" "inquire(DIRECTORY=newfolder,EXIST=doesexist)"
+                       "doesexist = s5p_folder_exists(trim(newfolder))")
+    s5p_replace("${f}" "inquire (DIRECTORY=trim(thisfolder),EXIST=folder_exist)"
+                       "folder_exist = s5p_folder_exists(trim(thisfolder))")
+
+    # Nothing may be left that starts a shell.
+    file(STRINGS "${f}" remaining REGEX "^[ \t]*call[ \t]+execute_command_line")
+    if(remaining)
+        message(FATAL_ERROR "swmm5plus-capi: shell commands left in ${f}:\n${remaining}\n"
+                            "Update s5p_no_shell_commands in cmake/SourceHooks.cmake.")
     endif()
 endfunction()
 
@@ -154,14 +204,6 @@ function(s5p_portable_fortran dir)
     s5p_replace("${dir}/timeloop/adjust.f90" "where (elemYN(thisP,eYNcol) == eYNvalue)"
                                              "where (elemYN(thisP,eYNcol) .eqv. eYNvalue)")
 
-    # INQUIRE(DIRECTORY=...) is an Intel extension
-    set(f "${dir}/utility/utility_files.f90")
-    s5p_replace("${f}" "inquire (DIRECTORY=trim(setting%File%output_timestamp_subfolder),EXIST=isfolder)"
-                       "inquire (FILE=trim(setting%File%output_timestamp_subfolder)//'/.',EXIST=isfolder)")
-    s5p_replace("${f}" "inquire(DIRECTORY=newfolder,EXIST=doesexist)"
-                       "inquire(FILE=trim(newfolder)//'/.',EXIST=doesexist)")
-    s5p_replace("${f}" "inquire (DIRECTORY=trim(thisfolder),EXIST=folder_exist)"
-                       "inquire (FILE=trim(thisfolder)//'/.',EXIST=folder_exist)")
 
     # KIND argument must be an integer
     s5p_replace("${dir}/initialization/discretization.f90" "real(min_elem_per_link,real(8))"
