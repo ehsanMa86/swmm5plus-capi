@@ -42,8 +42,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y gfortran libhdf5-dev cmake
       - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
       - run: cmake --build build -j4
-      - name: API test (known gfortran issue, see README)
-        continue-on-error: true
+      - name: API test (full EXTRAN simulation through the C API)
         run: ctest --test-dir build --output-on-failure
 
   intel:
