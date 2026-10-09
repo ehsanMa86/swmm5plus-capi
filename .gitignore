@@ -1,0 +1,8 @@
+/build*/
+/out/
+*.out
+*.rpt
+*.h5
+CMakeUserPresets.json
+.vscode/
+.idea/
