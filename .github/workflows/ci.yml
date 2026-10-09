@@ -58,12 +58,43 @@ jobs:
           wget -qO- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB | gpg --dearmor | sudo tee /usr/share/keyrings/oneapi-archive-keyring.gpg > /dev/null
           echo "deb [signed-by=/usr/share/keyrings/oneapi-archive-keyring.gpg] https://apt.repos.intel.com/oneapi all main" | sudo tee /etc/apt/sources.list.d/oneAPI.list
           sudo apt-get update
-          sudo apt-get install -y intel-oneapi-compiler-fortran intel-oneapi-compiler-dpcpp-cpp libhdf5-dev cmake
+          sudo apt-get install -y intel-oneapi-compiler-fortran intel-oneapi-compiler-dpcpp-cpp cmake ninja-build
+
+      # Fortran module files are compiler specific: the HDF5 Fortran modules
+      # of the Ubuntu package (built with gfortran) cannot be read by ifx, so
+      # HDF5 is built with the Intel compilers.
+      - name: Cache HDF5 (Intel)
+        id: hdf5
+        uses: actions/cache@v4
+        with:
+          path: ~/hdf5-intel
+          key: hdf5-${{ env.HDF5_VERSION }}-ubuntu-24.04-ifx-static-v1
+
+      - name: Build static HDF5 with Fortran (Intel)
+        if: steps.hdf5.outputs.cache-hit != 'true'
+        run: |
+          set +eu
+          source /opt/intel/oneapi/setvars.sh --force > /dev/null
+          set -eu
+          curl -sSL -o hdf5.tar.gz "https://github.com/HDFGroup/hdf5/releases/download/hdf5_${HDF5_VERSION}/hdf5-${HDF5_VERSION}.tar.gz"
+          echo "${HDF5_SHA256}  hdf5.tar.gz" | sha256sum -c
+          tar xzf hdf5.tar.gz
+          cmake -G Ninja -S "hdf5-${HDF5_VERSION}" -B hdf5-build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=icx -DCMAKE_Fortran_COMPILER=ifx -DCMAKE_INSTALL_PREFIX="$HOME/hdf5-intel" \
+            -DHDF5_BUILD_FORTRAN=ON -DBUILD_SHARED_LIBS=OFF -DBUILD_STATIC_LIBS=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DBUILD_TESTING=OFF -DHDF5_BUILD_EXAMPLES=OFF -DHDF5_BUILD_TOOLS=OFF -DHDF5_BUILD_UTILS=OFF \
+            -DHDF5_ENABLE_Z_LIB_SUPPORT=OFF -DHDF5_ENABLE_SZIP_SUPPORT=OFF -DHDF5_ENABLE_NONSTANDARD_FEATURE_FLOAT16=OFF
+          cmake --build hdf5-build
+          cmake --install hdf5-build
+
       - name: Build and test
         run: |
-          source /opt/intel/oneapi/setvars.sh
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_Fortran_COMPILER=ifx -DCMAKE_C_COMPILER=icx
-          cmake --build build -j4
+          set +eu
+          source /opt/intel/oneapi/setvars.sh --force > /dev/null
+          set -eu
+          cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_Fortran_COMPILER=ifx -DCMAKE_C_COMPILER=icx \
+            -DCMAKE_PREFIX_PATH="$HOME/hdf5-intel"
+          cmake --build build
           ctest --test-dir build --output-on-failure
 
   mingw-windows:

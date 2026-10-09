@@ -2,7 +2,7 @@
 
 A C interface for [SWMM5+](https://github.com/CIMM-ORG/SWMM5plus), the finite-volume dynamic-wave solver for the EPA Storm Water Management Model developed by CIMM at the University of Texas at Austin.
 
-SWMM5+ is a Fortran program. This project builds it as a shared library with a small, stable C API (`include/swmm5plus.h`), so that applications written in any language can load it like the other SWMM and EPANET engines. [Anahita](https://github.com/ehsanMa86/Anahita) uses it to offer SWMM5+ next to EPA SWMM 5.2.
+SWMM5+ is a Fortran program. This project builds it as a shared library with a small, stable C API (`include/swmm5plus.h`), so that applications written in any language can load it like the other SWMM and EPANET engines. [Mirab](https://github.com/ehsanMa86/Mirab) uses it to offer SWMM5+ next to EPA SWMM 5.2.
 
 ```c
 #include "swmm5plus.h"
@@ -27,9 +27,9 @@ Inside the callback, `s5p_get_value` reads node depth and head, and link flow, d
 
 ## Installing
 
-Each [release](https://github.com/ehsanMa86/swmm5plus-capi/releases) carries prebuilt libraries for `windows-x86_64`, `linux-x86_64`, `macos-arm64` and `macos-x86_64`, built by [.github/workflows/release.yml](.github/workflows/release.yml). For each platform there is a manifest, `swmm5plus-capi-<platform>.json` (format `anahita-engine/1`), listing the files, their sizes and SHA-256 checksums. The libraries need no Fortran compiler: HDF5 is linked statically everywhere. On Linux and macOS the GNU Fortran runtime is included and found next to the libraries (`$ORIGIN` on Linux, `@loader_path` on macOS). On Windows the GCC and Fortran runtimes are linked into the two DLLs, which depend on Windows system DLLs only, so they cannot clash with the MinGW runtime DLLs of a host application.
+Each [release](https://github.com/ehsanMa86/swmm5plus-capi/releases) carries prebuilt libraries for `windows-x86_64`, `linux-x86_64`, `macos-arm64` and `macos-x86_64`, built by [.github/workflows/release.yml](.github/workflows/release.yml). For each platform there is a manifest, `swmm5plus-capi-<platform>.json` (format `mirab-engine/1`), listing the files, their sizes and SHA-256 checksums. The libraries need no Fortran compiler: HDF5 is linked statically everywhere. On Linux and macOS the GNU Fortran runtime is included and found next to the libraries (`$ORIGIN` on Linux, `@loader_path` on macOS). On Windows the GCC and Fortran runtimes are linked into the two DLLs, which depend on Windows system DLLs only, so they cannot clash with the MinGW runtime DLLs of a host application.
 
-- **With Anahita:** *Tools > Simulation engines > Install SWMM5+*, or `anahita-cli engines install swmm5plus-capi-<platform>.json` with the files in the same folder as the manifest.
+- **With Mirab:** *Project > Simulation engines > Install SWMM5+*, or `mirab-cli engines install swmm5plus-capi-<platform>.json` with the files in the same folder as the manifest.
 - **Other applications:** put all files of one platform into one folder, dropping the `swmm5plus-capi-<version>-<platform>-` prefix of the asset names (the manifest gives each file's `name`), and load `libswmm5plus_capi` (`swmm5plus_capi.dll` on Windows) from there.
 
 To publish a release, push a tag such as `v0.1.0`. The workflow builds and tests every platform, runs `tools/package_release.py`, and attaches the files to the GitHub release.
@@ -71,7 +71,7 @@ Test models that point to absolute Windows paths in their `[FILES]` section (for
 ## Notes for host applications
 
 - **One model per process.** SWMM5+ keeps its state in Fortran module variables.
-- **Run it in a separate process.** On fatal input errors SWMM5+ executes Fortran `STOP`, which ends the whole process with exit code 0. Anahita runs every engine in its own solver process for this reason.
+- **Run it in a separate process.** On fatal input errors SWMM5+ executes Fortran `STOP`, which ends the whole process with exit code 0. Mirab runs every engine in its own solver process for this reason.
 - **Model limits.** SWMM5+ supports `INERTIAL_DAMPING NONE` only, always uses dynamic-wave routing, does not route pollutants, and requires subcatchment outlets to drain into storage nodes or conduit-connected junctions.
 
 ## License

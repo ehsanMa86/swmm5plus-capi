@@ -217,7 +217,9 @@ if(S5P_BUILD_TESTS)
                 "$<TARGET_FILE_DIR:swmm5plus_swmmc>")
     # SWMM5+ ends the process with STOP (exit code 0) on input errors, so the
     # test passes only when the program prints its final summary line.
-    set_tests_properties(capi-run PROPERTIES TIMEOUT 600
+    # The full 8-hour run takes 6 to 8 minutes on a desktop computer and can take
+    # several times longer on shared CI runners.
+    set_tests_properties(capi-run PROPERTIES TIMEOUT 3600
         PASS_REGULAR_EXPRESSION "time steps, peak link flow [0-9]"
         FAIL_REGULAR_EXPRESSION "crash point|USER CONFIGURATION ERROR|CODE ERROR")
 endif()

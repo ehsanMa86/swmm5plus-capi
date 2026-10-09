@@ -21,7 +21,7 @@
 # with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Create the release assets that Anahita downloads with "Install SWMM5+".
+"""Create the release assets that Mirab downloads with "Install SWMM5+".
 
 Usage:
     python3 tools/package_release.py --build build --out dist --version 0.1.0
@@ -169,7 +169,7 @@ def main() -> int:
             files.append({"name": f.name, "asset": asset, "size": f.stat().st_size, "sha256": sha256(f)})
 
     manifest = {
-        "format": "anahita-engine/1",
+        "format": "mirab-engine/1",
         "engine": ENGINE_ID,
         "name": "SWMM5+",
         "version": SWMM5PLUS_VERSION,
