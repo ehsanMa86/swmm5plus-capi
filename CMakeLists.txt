@@ -163,6 +163,7 @@ add_library(swmm5plus_capi SHARED
     src/swmm5plus_capi.f90
     src/s5p_dl.c
     src/s5p_fs.c
+    src/s5p_runtime.c
     ${JSON_FORTRAN_SOURCES}
     ${S5P_FORTRAN})
 target_include_directories(swmm5plus_capi
@@ -172,6 +173,14 @@ target_compile_options(swmm5plus_capi PRIVATE $<$<COMPILE_LANGUAGE:Fortran>:${S5
 target_compile_definitions(swmm5plus_capi PRIVATE SWMM5PLUS_CAPI_BUILD
     $<$<PLATFORM_ID:Windows>:S5P_WINDOWS> $<$<PLATFORM_ID:Darwin>:S5P_APPLE>)
 target_link_libraries(swmm5plus_capi PRIVATE ${S5P_HDF5} ${CMAKE_DL_LIBS})
+# Intel Fortran: the coarray runtime must be linked as well as compiled for,
+# otherwise the Fortran runtime in the library leaves its coarray symbols
+# undefined and programs linking the library fail.
+if(S5P_INTEL)
+    target_link_options(swmm5plus_capi PRIVATE -coarray=single)
+    # Starts the Intel Fortran runtime when a C program loads the library (src/s5p_runtime.c).
+    target_compile_definitions(swmm5plus_capi PRIVATE S5P_INTEL_FORTRAN)
+endif()
 add_dependencies(swmm5plus_capi swmm5plus_swmmc)
 if(WIN32)
     set_target_properties(swmm5plus_capi PROPERTIES PREFIX "")
@@ -205,6 +214,9 @@ endif()
 if(S5P_BUILD_EXECUTABLE)
     add_executable(swmm5plus "${S5P_DIR}/main/main.f90")
     target_compile_options(swmm5plus PRIVATE ${S5P_FFLAGS})
+    if(S5P_INTEL)
+        target_link_options(swmm5plus PRIVATE -coarray=single)
+    endif()
     target_link_libraries(swmm5plus PRIVATE swmm5plus_capi ${S5P_HDF5})
 endif()
 
