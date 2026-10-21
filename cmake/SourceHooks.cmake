@@ -42,6 +42,13 @@ endfunction()
 
 # Adds the hooks used by the C interface to a staged copy of SWMM5+.
 function(s5p_apply_hooks dir intel)
+    # 0. The sources are compiled with the C preprocessor (-cpp, -fpp), which
+    #    joins a line that ends in a backslash with the next one, even in a
+    #    Fortran comment. In utility_files.f90 this swallowed the statement
+    #    "lc = len_trim(output_path)" after a comment ending in '\', leaving
+    #    lc undefined before it indexes output_path.
+    s5p_no_line_splices("${dir}")
+
     # 1. API mode: do not read the host program's command line.
     s5p_replace("${dir}/utility/utility_files.f90"
         "    use utility_crash, only: util_crashpoint\n"
@@ -99,6 +106,16 @@ function(s5p_apply_hooks dir intel)
             "(output_static_type${kind}_elemR(1:N_Out_static_TypeElem+1))"
             "(output_static_type${kind}_elemR(1:N_Out_static_TypeElem))")
     endforeach()
+    #    Upstream bug (all compilers): the static output of a node's elements
+    #    copies N+1 rows of output_static_elemR into dset_data, which has N
+    #    rows. gfortran takes the loop extent from the right-hand side and
+    #    writes one value past the end of dset_data. The array sizes are
+    #    multiples of 16 bytes, so glibc and Windows leave slack after the
+    #    block, but the macOS allocator packs blocks without slack and the
+    #    write damages its neighbour ("Heap corruption detected").
+    s5p_replace("${dir}/main/output.f90"
+        "output_static_elemR(first_elem_idx:first_elem_idx+N_node_elem,"
+        "output_static_elemR(first_elem_idx:first_elem_idx+N_node_elem-1,")
 
     # 5. Standard Fortran: one component reference uses the DEC "." separator,
     #    which only Intel compilers accept.
@@ -128,6 +145,20 @@ function(s5p_apply_hooks dir intel)
         s5p_replace("${dir}/utility/utility_files.f90" "    use ifport\n" "")
         s5p_portable_fortran("${dir}")
     endif()
+endfunction()
+
+# Removes backslashes at the end of lines in the staged Fortran sources.
+# Free-form Fortran has no backslash continuation, so such a backslash can only
+# end a comment; removing it keeps the preprocessor from joining the next line.
+function(s5p_no_line_splices dir)
+    file(GLOB_RECURSE sources "${dir}/*.f90")
+    foreach(f IN LISTS sources)
+        file(READ "${f}" content)
+        string(REGEX REPLACE "\\\\([ \t]*\r?\n)" "\\1" fixed "${content}")
+        if(NOT fixed STREQUAL content)
+            file(WRITE "${f}" "${fixed}")
+        endif()
+    endforeach()
 endfunction()
 
 # Replaces the shell commands and folder tests in utility_files.f90.

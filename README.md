@@ -47,6 +47,8 @@ cmake --install build --prefix /opt/swmm5plus
 
 On Ubuntu, `sudo apt install gfortran libhdf5-dev` provides the dependencies.
 
+With gfortran, `-DS5P_SANITIZE=ON` builds everything with AddressSanitizer and the Fortran run-time checks (`-fcheck=all`), so that a memory error stops the test at the faulty statement. CI runs the test this way on Linux.
+
 On Windows, build in the MINGW64 environment of [MSYS2](https://www.msys2.org) (`pacman -S mingw-w64-x86_64-gcc-fortran mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja`), with HDF5 built from source as a static library with Fortran support. The Windows job in [.github/workflows/release.yml](.github/workflows/release.yml) shows the exact commands, including two settings HDF5 1.14.6 needs with GCC 14 or later. MinGW builds link the GCC and Fortran runtimes statically and export the functions of `swmm5plus.h` only. The SWMM5+ command-line program is not built on Windows, because it would share Fortran module variables with the DLL.
 
 The build runs SWMM5+ in single-image coarray mode (`-fcoarray=single` or `-coarray=single`). Parallel runs on several images still use the SWMM5+ executable and its coarray launcher; the shared library is meant for single-process embedding.
@@ -61,10 +63,13 @@ The build runs SWMM5+ in single-image coarray mode (`-fcoarray=single` or `-coar
 | Windows | MinGW-w64 gfortran 16 | Builds and passes the same EXTRAN test through the C API. Release builds use MSYS2 (MINGW64). |
 | Windows | Intel ifx | Not tested. |
 
-**SWMM5+ bugs fixed by the build.** Making SWMM5+ run under gfortran exposed two memory errors in SWMM5+ itself that the Intel build happens to survive. Both are corrected for every compiler and should be reported upstream:
+**SWMM5+ bugs fixed by the build.** Making SWMM5+ run under gfortran exposed three memory errors in SWMM5+ itself that the Intel build happens to survive. All are corrected for every compiler and should be reported upstream:
 
 - the time-step limiter for inflow boundaries applies a WHERE mask over all elements to arrays sized by the boundary elements, writing past their end (`timeloop.f90`);
-- the static-output header copies N+1 names and units into N slots (`output.f90`).
+- the static-output header copies N+1 names and units into N slots (`output.f90`);
+- the static output of node elements copies N+1 rows into an array of N rows (`output.f90`). The value written past the end lands in allocator slack on Linux and Windows but aborts the program on macOS ("Heap corruption detected").
+
+The build also removes backslashes at the end of comment lines: the C preprocessor would join the next line into the comment, which in `utility_files.f90` dropped the assignment of a string index.
 
 Test models that point to absolute Windows paths in their `[FILES]` section (for example the SWMM5+ test case `extran4_no_surcharge.inp`) make EPA SWMM 5.1 overflow a buffer on other systems; remove those lines first.
 

@@ -69,7 +69,9 @@ def platform_id() -> str:
 
 
 def run(cmd: list[str]) -> str:
-    return subprocess.run(cmd, check=True, capture_output=True, text=True).stdout
+    # No standard input: a tool that asks a question (dylibbundler when it cannot
+    # find a library) fails at once instead of waiting forever.
+    return subprocess.run(cmd, check=True, capture_output=True, text=True, stdin=subprocess.DEVNULL).stdout
 
 
 def sha256(path: Path) -> str:
@@ -102,11 +104,23 @@ def linux_runtime(libs: list[Path], stage: Path) -> list[Path]:
 def macos_runtime(libs: list[Path], stage: Path) -> list[Path]:
     """Use dylibbundler to copy Homebrew's GCC runtime and rewrite install names."""
     before = set(stage.iterdir())
+    # Homebrew's libgfortran refers to libquadmath and libgcc_s through @rpath.
+    search: list[str] = []
+    gcc_lib = Path(run(["brew", "--prefix", "gcc"]).strip()) / "lib" / "gcc" / "current"
+    if gcc_lib.is_dir():
+        search = ["-s", str(gcc_lib)]
     for lib in libs:
-        run(["dylibbundler", "-of", "-b", "-x", str(lib), "-d", str(stage), "-p", "@loader_path/", "-cd"])
+        run(["dylibbundler", "-of", "-b", "-x", str(lib), "-d", str(stage), "-p", "@loader_path/", "-cd", *search])
     bundled = sorted(set(stage.iterdir()) - before)
     for f in libs + bundled:
+        f.chmod(f.stat().st_mode | 0o200)  # Homebrew copies are read-only
         run(["codesign", "--force", "--sign", "-", str(f)])
+    # Nothing may still load from the build machine's Homebrew or /usr/local.
+    for f in libs + bundled:
+        deps = [line.split()[0] for line in run(["otool", "-L", str(f)]).splitlines()[1:] if line.strip()]
+        bad = [d for d in deps if d.startswith(("/opt/homebrew", "/usr/local"))]
+        if bad:
+            raise SystemExit(f"{f.name} still depends on {', '.join(bad)}")
     return bundled
 
 

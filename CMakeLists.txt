@@ -39,6 +39,20 @@ option(S5P_BUILD_EXECUTABLE "Build the SWMM5+ command-line program as well" ${_s
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
+
+# Memory-error checks for development and CI: AddressSanitizer for C and
+# Fortran, and the gfortran run-time checks (array bounds and others). Out of
+# bounds writes that the Linux and Windows allocators tolerate can abort on
+# macOS; this finds them on Linux at the faulty statement.
+option(S5P_SANITIZE "Build with AddressSanitizer and Fortran run-time checks (GCC)" OFF)
+if(S5P_SANITIZE)
+    if(NOT CMAKE_Fortran_COMPILER_ID STREQUAL "GNU")
+        message(FATAL_ERROR "swmm5plus-capi: S5P_SANITIZE requires gfortran")
+    endif()
+    add_compile_options(-fsanitize=address -fno-omit-frame-pointer
+        $<$<COMPILE_LANGUAGE:Fortran>:-fcheck=all> $<$<COMPILE_LANGUAGE:Fortran>:-fbacktrace>)
+    add_link_options(-fsanitize=address)
+endif()
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_Fortran_MODULE_DIRECTORY "${PROJECT_BINARY_DIR}/modules")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
@@ -240,6 +254,14 @@ if(S5P_BUILD_TESTS)
     set_tests_properties(capi-run PROPERTIES TIMEOUT 3600
         PASS_REGULAR_EXPRESSION "time steps, peak link flow [0-9]"
         FAIL_REGULAR_EXPRESSION "crash point|USER CONFIGURATION ERROR|CODE ERROR")
+    if(S5P_SANITIZE)
+        # SWMM5+ leaves its module arrays allocated at exit; report memory
+        # errors only, and fail on Fortran run-time errors as well. The checks
+        # make the run about three times slower.
+        set_tests_properties(capi-run PROPERTIES TIMEOUT 10800
+            ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0:halt_on_error=1;GFORTRAN_UNBUFFERED_ALL=1"
+            FAIL_REGULAR_EXPRESSION "crash point|USER CONFIGURATION ERROR|CODE ERROR|AddressSanitizer|Fortran runtime error")
+    endif()
 endif()
 
 install(TARGETS swmm5plus_capi swmm5plus_swmmc

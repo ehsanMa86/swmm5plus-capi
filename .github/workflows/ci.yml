@@ -49,6 +49,19 @@ jobs:
       - name: API test (full EXTRAN simulation through the C API)
         run: ctest --test-dir build --output-on-failure
 
+  # Memory errors: AddressSanitizer and the gfortran run-time checks
+  # (S5P_SANITIZE). An out-of-bounds write that glibc and Windows tolerate
+  # aborts the program on macOS; here it fails the test at the faulty statement.
+  sanitize:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y gfortran libhdf5-dev cmake
+      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DS5P_SANITIZE=ON
+      - run: cmake --build build -j4
+      - name: API test with AddressSanitizer and bounds checks
+        run: ctest --test-dir build --output-on-failure
+
   # Apple silicon: the release builds for it, and ARM64 floating point (fused
   # multiply-add) can differ from the x86-64 jobs.
   macos:
