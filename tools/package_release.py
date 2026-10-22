@@ -55,7 +55,7 @@ from pathlib import Path
 
 ENGINE_ID = "swmm5plus-1.0"
 SWMM5PLUS_VERSION = "1.0.3"
-API_VERSION = 1
+API_VERSION = 2
 
 
 def platform_id() -> str:

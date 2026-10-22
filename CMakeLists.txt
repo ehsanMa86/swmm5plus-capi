@@ -106,6 +106,8 @@ s5p_replace("${SWMMC_DIR}/api.c" "#include <unistd.h>\n"
     "#include <unistd.h>\n#if defined(_WIN32)\n#include <direct.h>\n#define mkdir(path, mode) _mkdir(path)\n#endif\n")
 file(GLOB SWMMC_SOURCES "${SWMMC_DIR}/*.c")
 list(FILTER SWMMC_SOURCES EXCLUDE REGEX "/main\\.c$")
+# Subcatchment results and unit factors for the C interface (version 2).
+list(APPEND SWMMC_SOURCES "${PROJECT_SOURCE_DIR}/src/s5p_hydrology.c")
 add_library(swmm5plus_swmmc SHARED ${SWMMC_SOURCES})
 target_include_directories(swmm5plus_swmmc PRIVATE "${SWMMC_DIR}")
 # EPA SWMM 5.1 and the SWMM5+ additions predate C23, where "int f()" means a
@@ -181,6 +183,7 @@ endif()
 add_library(swmm5plus_capi SHARED
     src/capi_state.F90
     src/swmm5plus_capi.f90
+    src/s5p_console.c
     src/s5p_dl.c
     src/s5p_fs.c
     src/s5p_runtime.c
@@ -254,6 +257,29 @@ if(S5P_BUILD_TESTS)
     set_tests_properties(capi-run PROPERTIES TIMEOUT 3600
         PASS_REGULAR_EXPRESSION "time steps, peak link flow [0-9]"
         FAIL_REGULAR_EXPRESSION "crash point|USER CONFIGURATION ERROR|CODE ERROR")
+    # Interface version 2 on a short model with subcatchments: the whole run,
+    # host-driven stepping, and a stop requested by the reporting callback.
+    # Everything SWMM5+ prints is discarded (s5p_set_console), so its texts
+    # must not appear, while the test's own output from a callback must.
+    add_executable(s5p_api_test tests/test_api.c)
+    target_link_libraries(s5p_api_test PRIVATE swmm5plus_capi)
+    if(UNIX)
+        target_link_libraries(s5p_api_test PRIVATE m)
+    endif()
+    set(_s5p_api_fail "FAILED|crash point|USER CONFIGURATION ERROR|CODE ERROR|Retrieving project data|SWMM5\\+ finished")
+    foreach(mode run step cancel)
+        add_test(NAME capi-api-${mode}
+            COMMAND s5p_api_test ${mode} "${PROJECT_SOURCE_DIR}/tests/data/catchments.inp"
+                    "${PROJECT_BINARY_DIR}/test-output-${mode}" "$<TARGET_FILE_DIR:swmm5plus_swmmc>")
+        set_tests_properties(capi-api-${mode} PROPERTIES TIMEOUT 1800
+            PASS_REGULAR_EXPRESSION "report callback output is visible.*interface version 2 test passed"
+            FAIL_REGULAR_EXPRESSION "${_s5p_api_fail}")
+        if(S5P_SANITIZE)
+            set_tests_properties(capi-api-${mode} PROPERTIES
+                ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0:halt_on_error=1;GFORTRAN_UNBUFFERED_ALL=1"
+                FAIL_REGULAR_EXPRESSION "${_s5p_api_fail}|AddressSanitizer|Fortran runtime error")
+        endif()
+    endforeach()
     if(S5P_SANITIZE)
         # SWMM5+ leaves its module arrays allocated at exit; report memory
         # errors only, and fail on Fortran run-time errors as well. The checks

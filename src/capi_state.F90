@@ -26,8 +26,11 @@ module capi_state
     !%   - utility_files: skip command-line parsing when capi_active is true,
     !%                    and manage folders and files without a shell,
     !%   - timeloop:      call capi_progress_stop once per time step,
+    !%                    capi_report at every reporting time, and run
+    !%                    one step at a time in step mode (s5p_step),
     !%   - interface:     load the EPA SWMM library named capi_swmmc_library.
     use iso_c_binding
+    use iso_fortran_env, only: output_unit
     implicit none
     private
 
@@ -38,6 +41,17 @@ module capi_state
     public :: capi_error_message
     public :: capi_swmmc_library
     public :: capi_progress_stop
+    public :: capi_report_cb
+    public :: capi_report_user
+    public :: capi_report_period
+    public :: capi_report
+    public :: capi_step_mode
+    public :: capi_single_step
+    public :: capi_loop_continues
+    public :: capi_doHydrologyStepYN
+    public :: capi_doHydraulicsStepYN
+    public :: capi_console_capture
+    public :: capi_console_release
     public :: capi_set_error
     public :: s5p_range
     public :: s5p_folder_exists
@@ -52,6 +66,21 @@ module capi_state
     type(c_funptr) :: capi_progress_cb = c_null_funptr
     type(c_ptr)    :: capi_progress_user = c_null_ptr
     character(len=1024) :: capi_error_message = ''
+
+    !% Reporting callback (s5p_set_report_callback) and the number of
+    !% reporting periods delivered so far.
+    type(c_funptr) :: capi_report_cb = c_null_funptr
+    type(c_ptr)    :: capi_report_user = c_null_ptr
+    integer        :: capi_report_period = 0
+
+    !% Step mode (s5p_step): timeloop_toplevel returns before the time loop,
+    !% and the host runs the loop one iteration at a time. The flags of the
+    !% loop that carry over from one iteration to the next are kept here.
+    logical :: capi_step_mode = .false.
+    logical :: capi_single_step = .false.
+    logical :: capi_loop_continues = .false.
+    logical :: capi_doHydrologyStepYN = .false.
+    logical :: capi_doHydraulicsStepYN = .false.
 
     !% File name of the EPA SWMM library built next to this one.
     !% The Fortran preprocessor does not reliably predefine platform macros,
@@ -72,6 +101,21 @@ module capi_state
             type(c_ptr), value    :: user
             integer(c_int)        :: stop_flag
         end function progress_fn
+        function report_fn(period, now, user) bind(C) result(stop_flag)
+            import :: c_double, c_ptr, c_int
+            integer(c_int), value :: period
+            real(c_double), value :: now
+            type(c_ptr), value    :: user
+            integer(c_int)        :: stop_flag
+        end function report_fn
+    end interface
+
+    !% Console redirection in src/s5p_console.c (s5p_set_console).
+    interface
+        subroutine c_console_capture() bind(C, name='s5p_console_capture')
+        end subroutine c_console_capture
+        subroutine c_console_release() bind(C, name='s5p_console_release')
+        end subroutine c_console_release
     end interface
 
     !% Folder and file operations in src/s5p_fs.c. They replace the shell
@@ -102,17 +146,50 @@ module capi_state
 contains
 
     logical function capi_progress_stop(now, endt)
-        !% Reports progress to the host and returns true when it asks to stop.
+        !% Reports progress to the host and returns true when it asks to stop,
+        !% or when the reporting callback asked to stop during this step.
         real(8), intent(in) :: now, endt
         procedure(progress_fn), pointer :: fp
-        capi_progress_stop = .false.
-        if (.not. c_associated(capi_progress_cb)) return
+        integer(c_int) :: rc
+        capi_progress_stop = capi_cancelled
+        if (capi_cancelled .or. .not. c_associated(capi_progress_cb)) return
         call c_f_procpointer(capi_progress_cb, fp)
-        if (fp(real(now, c_double), real(endt, c_double), capi_progress_user) /= 0) then
+        call capi_console_release()
+        rc = fp(real(now, c_double), real(endt, c_double), capi_progress_user)
+        call capi_console_capture()
+        if (rc /= 0) then
             capi_cancelled = .true.
             capi_progress_stop = .true.
         end if
     end function capi_progress_stop
+
+    subroutine capi_report(now)
+        !% Delivers a reporting period to the host. A non-zero return value
+        !% stops the run at the end of the current step.
+        real(8), intent(in) :: now
+        procedure(report_fn), pointer :: fp
+        integer(c_int) :: rc
+        if (c_associated(capi_report_cb)) then
+            call c_f_procpointer(capi_report_cb, fp)
+            call capi_console_release()
+            rc = fp(int(capi_report_period, c_int), real(now, c_double), capi_report_user)
+            call capi_console_capture()
+            if (rc /= 0) capi_cancelled = .true.
+        end if
+        capi_report_period = capi_report_period + 1
+    end subroutine capi_report
+
+    subroutine capi_console_capture()
+        !% Sends standard output where s5p_set_console asked, while SWMM5+ runs.
+        flush (output_unit)
+        call c_console_capture()
+    end subroutine capi_console_capture
+
+    subroutine capi_console_release()
+        !% Gives standard output back to the host.
+        flush (output_unit)
+        call c_console_release()
+    end subroutine capi_console_release
 
     subroutine capi_set_error(message)
         character(len=*), intent(in) :: message

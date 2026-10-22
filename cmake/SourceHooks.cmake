@@ -71,7 +71,80 @@ function(s5p_apply_hooks dir intel)
     endif()
     string(SUBSTRING "${tl}" 0 ${implicit_pos} head)
     string(SUBSTRING "${tl}" ${implicit_pos} -1 tail)
-    file(WRITE "${dir}/timeloop/timeloop.f90" "${head}    use capi_state, only: capi_progress_stop\n${tail}")
+    string(CONCAT capi_use "    use capi_state, only: capi_progress_stop, capi_report, capi_step_mode, &\n"
+        "        capi_single_step, capi_loop_continues, capi_doHydrologyStepYN, capi_doHydraulicsStepYN\n")
+    file(WRITE "${dir}/timeloop/timeloop.f90" "${head}${capi_use}${tail}")
+
+    #    Reporting callback (interface version 2): at every time SWMM5+ stores
+    #    a level of its multi-level output, with the same time, also when the
+    #    output files themselves are switched off.
+    s5p_replace("${dir}/timeloop/timeloop.f90"
+        "            !% --- check for crash conditions\n            call util_crashstop(13978)\n"
+        "            if (.not. inSpinUpYN) then\n                if (util_output_must_report()) call capi_report(setting%Time%Now)\n            end if\n            !% --- check for crash conditions\n            call util_crashstop(13978)\n")
+
+    #    Step mode (s5p_step): timeloop_toplevel stops before the time loop and
+    #    keeps the loop flags; timeloop_capi_step runs one iteration of the
+    #    unchanged loop body, and timeloop_capi_finish closes the loop.
+    set(loop_call "        call tl_outerloop (doHydrologyStepYN, doHydraulicsStepYN, .false., .false.)\n")
+    string(CONCAT loop_hook
+        "        if (capi_step_mode) then\n"
+        "            capi_doHydrologyStepYN  = doHydrologyStepYN\n"
+        "            capi_doHydraulicsStepYN = doHydraulicsStepYN\n"
+        "            capi_loop_continues     = .false.\n"
+        "            return\n"
+        "        end if\n"
+        "${loop_call}")
+    s5p_replace("${dir}/timeloop/timeloop.f90" "${loop_call}" "${loop_hook}")
+    s5p_replace("${dir}/timeloop/timeloop.f90"
+        "        thisStep = 1\n"
+        "        if (.not. capi_loop_continues) thisStep = 1\n")
+    s5p_replace("${dir}/timeloop/timeloop.f90"
+        "        end do  !% --- end of time loop\n"
+        "            if (capi_single_step) exit\n        end do  !% --- end of time loop\n")
+    s5p_replace("${dir}/timeloop/timeloop.f90"
+        "    public  :: timeloop_toplevel\n"
+        "    public  :: timeloop_toplevel\n    public  :: timeloop_capi_step, timeloop_capi_finish\n")
+    string(CONCAT step_procs
+        "    subroutine timeloop_capi_step (finished)\n"
+        "        !% Runs one iteration of the time loop (s5p_step); timeloop_toplevel\n"
+        "        !% must have been called in step mode first.\n"
+        "        logical, intent(out) :: finished\n"
+        "        finished = (setting%Time%Now > setting%Time%End - setting%Time%DtTol)\n"
+        "        if (finished) return\n"
+        "        capi_single_step = .true.\n"
+        "        call tl_outerloop (capi_doHydrologyStepYN, capi_doHydraulicsStepYN, .false., .false.)\n"
+        "        capi_single_step    = .false.\n"
+        "        capi_loop_continues = .true.\n"
+        "        finished = (setting%Time%Now > setting%Time%End - setting%Time%DtTol)\n"
+        "    end subroutine timeloop_capi_step\n"
+        "\n"
+        "    subroutine timeloop_capi_finish ()\n"
+        "        !% Closes a time loop run with timeloop_capi_step, as the end of\n"
+        "        !% timeloop_toplevel does.\n"
+        "        integer(kind=8) :: cval, crate, cmax\n"
+        "        sync all\n"
+        "        if (this_image() == 1) then\n"
+        "            call system_clock(count=cval,count_rate=crate,count_max=cmax)\n"
+        "            setting%Time%WallClock%TimeMarchEnd = cval\n"
+        "        end if\n"
+        "    end subroutine timeloop_capi_finish\n"
+        "\n"
+        "end module timeloop")
+    s5p_replace("${dir}/timeloop/timeloop.f90" "end module timeloop" "${step_procs}")
+
+    #    Upstream bug (all compilers): a subcatchment that drains to an
+    #    upstream end, a dead end or an outfall is connected to the first
+    #    conduit element next to the node, which is checked by element type.
+    #    The connection was made while the network is defined, before the
+    #    initial conditions assign the element types, so every such model
+    #    stopped with "USER CONFIGURATION ERROR ... diagnostic elements". It is
+    #    made after the initial conditions instead; nothing in between uses it.
+    s5p_replace("${dir}/initialization/initialization.f90"
+        "                call init_subcatchment_elements()\n"
+        "                !% (connected after the initial conditions)\n")
+    s5p_replace("${dir}/initialization/initialization.f90"
+        "        call util_crashstop(4429873)\n"
+        "        call util_crashstop(4429873)\n        if (setting%Simulation%useHydrology) then\n            call init_subcatchment_elements()\n            call util_crashstop(4429874)\n        end if\n")
 
     # 3. Portable library loading, with a platform-specific library name.
     s5p_replace("${dir}/interface/interface.f90"
