@@ -65,7 +65,7 @@ jobs:
   # Apple silicon: the release builds for it, and ARM64 floating point (fused
   # multiply-add) can differ from the x86-64 jobs.
   macos:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - run: |
@@ -77,7 +77,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/hdf5
-          key: hdf5-${{ env.HDF5_VERSION }}-macos-14-static-v1
+          key: hdf5-${{ env.HDF5_VERSION }}-macos-15-static-v1
 
       - name: Build static HDF5 with Fortran
         if: steps.hdf5.outputs.cache-hit != 'true'
