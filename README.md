@@ -38,7 +38,7 @@ Each [release](https://github.com/ehsanMa86/swmm5plus-capi/releases) carries pre
 - **With Mirab:** *Project > Simulation engines > Install SWMM5+*, or `mirab-cli engines install swmm5plus-capi-<platform>.json` with the files in the same folder as the manifest.
 - **Other applications:** put all files of one platform into one folder, dropping the `swmm5plus-capi-<version>-<platform>-` prefix of the asset names (the manifest gives each file's `name`), and load `libswmm5plus_capi` (`swmm5plus_capi.dll` on Windows) from there.
 
-To publish a release, push a tag such as `v0.1.0`. The workflow builds and tests every platform, runs `tools/package_release.py`, and attaches the files to the GitHub release.
+To publish a release, push a tag such as `v0.1.0`. The workflow builds and tests every platform, runs `tools/package_release.py`, and attaches the files to the GitHub release, with `swmm5plus-capi-<version>-SHA256SUMS.txt` and a signed build provenance attestation for every file (`gh attestation verify <file> --repo ehsanMa86/swmm5plus-capi`). Releases are immutable once published, so a tag with a hyphen (`v0.3.0-rc1`) becomes a draft prerelease, to be published by hand. Each platform's files include the license texts of json-fortran, HDF5 and the GNU Fortran runtime, and `GCC-RUNTIME-SOURCE.txt`, which names the GCC version of the bundled runtime and where its source code is published.
 
 ## Building
 
@@ -86,6 +86,10 @@ Test models that point to absolute Windows paths in their `[FILES]` section (for
 - **Run it in a separate process.** On fatal input errors SWMM5+ executes Fortran `STOP`, which ends the whole process with exit code 0. Mirab runs every engine in its own solver process for this reason.
 - **Model limits.** SWMM5+ supports `INERTIAL_DAMPING NONE` only, always uses dynamic-wave routing and does not route pollutants. A subcatchment may drain to a storage node, a junction with three or more links, or an upstream end or outfall next to a conduit, but not to a junction with exactly two links. Every upstream end junction needs an inflow (`[INFLOWS]` or `[DWF]`; a small base flow is enough), otherwise SWMM5+ stops with "nJ1 should be converted to nBCup or nBCdn".
 - **Standard output.** SWMM5+ and EPA SWMM print progress and messages to standard output. A host that uses standard output itself calls `s5p_set_console(S5P_CONSOLE_STDERR)` or `S5P_CONSOLE_NONE` before `s5p_open`.
+
+## Feedback and contributing
+
+Report problems and suggest features in [Issues](https://github.com/ehsanMa86/swmm5plus-capi/issues/new/choose); problems in the Mirab application belong in the [Mirab repository](https://github.com/ehsanMa86/Mirab/issues). Pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). Report security problems privately as described in [SECURITY.md](SECURITY.md).
 
 ## License
 

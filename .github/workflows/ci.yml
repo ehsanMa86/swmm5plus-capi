@@ -28,6 +28,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 env:
   HDF5_VERSION: "1.14.6"
   HDF5_SHA256: "e4defbac30f50d64e1556374aa49e574417c9e72c6b1de7a4ff88c4b1bea6e9b"
@@ -36,13 +39,13 @@ jobs:
   headers:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - run: python3 tools/license_headers.py --check
 
   gfortran:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - run: sudo apt-get update && sudo apt-get install -y gfortran libhdf5-dev cmake
       - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
       - run: cmake --build build -j4
@@ -55,7 +58,7 @@ jobs:
   sanitize:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - run: sudo apt-get update && sudo apt-get install -y gfortran libhdf5-dev cmake
       - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DS5P_SANITIZE=ON
       - run: cmake --build build -j4
@@ -67,14 +70,14 @@ jobs:
   macos:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - run: |
           brew install gcc cmake
           echo "FC=$(ls $(brew --prefix)/bin/gfortran-* | sort -V | tail -1)" >> "$GITHUB_ENV"
 
       - name: Cache HDF5
         id: hdf5
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/hdf5
           key: hdf5-${{ env.HDF5_VERSION }}-macos-15-static-v1
@@ -116,7 +119,7 @@ jobs:
   intel:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Intel oneAPI Fortran
         run: |
           wget -qO- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB | gpg --dearmor | sudo tee /usr/share/keyrings/oneapi-archive-keyring.gpg > /dev/null
@@ -129,7 +132,7 @@ jobs:
       # HDF5 is built with the Intel compilers.
       - name: Cache HDF5 (Intel)
         id: hdf5
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/hdf5-intel
           key: hdf5-${{ env.HDF5_VERSION }}-ubuntu-24.04-ifx-static-v1
@@ -167,9 +170,9 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: msys2/setup-msys2@v2
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
         with:
           msystem: MINGW64
           update: true
@@ -183,7 +186,7 @@ jobs:
 
       - name: Cache HDF5
         id: hdf5
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ runner.temp }}/hdf5
           key: hdf5-${{ env.HDF5_VERSION }}-windows-mingw64-static-v1

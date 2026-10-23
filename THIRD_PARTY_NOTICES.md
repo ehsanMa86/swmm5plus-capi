@@ -18,18 +18,19 @@ swmm5plus-capi is Copyright (C) 2026 Ehsan Madadi and licensed under GPL-3.0-or-
 ## json-fortran 8.3.0
 
 - Source: https://github.com/jacobwilliams/json-fortran, commit `3ab8f98209871875325c6985dd0e50085d1c82c2`
-- License: BSD-style license, Copyright (c) 2014-2022 Jacob Williams. See the LICENSE file in the json-fortran repository.
+- License: BSD-style license, Copyright (c) 2014-2021 Jacob Williams, including the MIT-licensed FSON code by Joseph A. Levin. The full text is shipped with the prebuilt libraries as `json-fortran-LICENSE.txt` and is in `third_party/licenses/`.
 
 ## HDF5 (The HDF Group)
 
 - Source builds link the HDF5 found on the system. The prebuilt release libraries link HDF5 1.14.6 statically, downloaded from https://github.com/HDFGroup/hdf5.
-- License: BSD-style HDF5 license, Copyright 2006 by The HDF Group. The full text is in the COPYING file of the HDF5 distribution.
+- License: BSD-style HDF5 license, Copyright 2006 by The HDF Group. The full text is shipped with the prebuilt libraries as `HDF5-COPYING.txt` and is in `third_party/licenses/`.
 
 ## GNU Fortran runtime (prebuilt release libraries only)
 
 - Linux and macOS: `libgfortran` and, where needed, `libquadmath` from GCC are included next to the prebuilt libraries.
 - Windows: `libgfortran`, `libquadmath` and `libgcc` are linked statically into the two DLLs, so that they do not clash with runtime DLLs a host application has already loaded.
-- License: GPL-3.0 with the GCC Runtime Library Exception, version 3.1 (`libgfortran`), and LGPL-2.1 (`libquadmath`). Source code is available from https://gcc.gnu.org.
+- License: GPL-3.0 with the GCC Runtime Library Exception, version 3.1 (`libgfortran`, `libgcc`), and LGPL-2.1 (`libquadmath`). Both texts are shipped with the prebuilt libraries (`GCC-RUNTIME-LIBRARY-EXCEPTION-3.1.txt`, `LGPL-2.1.txt`) and are in `third_party/licenses/`.
+- Source code: each prebuilt package includes `GCC-RUNTIME-SOURCE.txt`, which names the exact GCC version the runtime comes from and where its source code and the distributor's changes (Ubuntu, Homebrew or MSYS2) are published. On Windows, where `libquadmath` is linked statically, the libraries can be rebuilt against a modified `libquadmath` from the source code in this repository.
 
 ## MinGW-w64 runtime (prebuilt Windows libraries only)
 

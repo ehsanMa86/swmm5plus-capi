@@ -139,6 +139,52 @@ def windows_runtime(libs: list[Path], stage: Path) -> list[Path]:
     return []
 
 
+def gcc_version(build: Path) -> str | None:
+    """Version of the GNU Fortran compiler of the build, whose runtime is bundled."""
+    cache = (build / "CMakeCache.txt").read_text(encoding="utf-8", errors="replace")
+    m = re.search(r"^CMAKE_Fortran_COMPILER:\w+=(.+)$", cache, re.M)
+    if not m:
+        return None
+    fc = m.group(1).strip()
+    try:
+        if "GNU Fortran" not in run([fc, "--version"]):
+            return None
+        return run([fc, "-dumpfullversion"]).strip() or None
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
+def runtime_source(plat: str, gcc: str) -> str:
+    """Where the source code of the bundled GNU Fortran runtime is published,
+    as the LGPL-2.1 of libquadmath requires."""
+    major = gcc.split(".")[0]
+    who, url = {
+        "linux": ("Ubuntu (package gcc-" + major + ")", "https://launchpad.net/ubuntu/+source/gcc-" + major),
+        "macos": ("Homebrew (formula gcc)", "https://github.com/Homebrew/homebrew-core/blob/master/Formula/g/gcc.rb"),
+        "windows": ("MSYS2 (package mingw-w64-gcc)", "https://github.com/msys2/MINGW-packages/tree/master/mingw-w64-gcc"),
+    }[plat.split("-")[0]]
+    if plat.startswith("windows"):
+        relink = ("On Windows the runtime is linked statically into the two DLLs. To use a modified\n"
+                  "libquadmath, rebuild them from the swmm5plus-capi source with your own GCC.")
+    else:
+        relink = ("The runtime libraries are separate files next to the engine libraries and can be\n"
+                  "replaced with other builds of the same GCC version.")
+    return f"""The GNU Fortran runtime in these libraries comes from GCC {gcc}, as built by {who}.
+
+libquadmath is licensed under the GNU Lesser General Public License, version 2.1
+(LGPL-2.1.txt). libgfortran and libgcc are licensed under the GNU General Public
+License, version 3, with the GCC Runtime Library Exception
+(GCC-RUNTIME-LIBRARY-EXCEPTION-3.1.txt).
+
+Source code:
+  GCC {gcc}: https://ftp.gnu.org/gnu/gcc/gcc-{gcc}/
+  Changes made by {who}: {url}
+  swmm5plus-capi: https://github.com/ehsanMa86/swmm5plus-capi
+
+{relink}
+"""
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--build", required=True, type=Path)
@@ -174,6 +220,12 @@ def main() -> int:
             bundled = linux_runtime(libs, stage)
         shutil.copy2(root / "LICENSE", stage / "swmm5plus-capi-LICENSE.txt")
         shutil.copy2(root / "THIRD_PARTY_NOTICES.md", stage / "swmm5plus-capi-THIRD_PARTY_NOTICES.md")
+        # License texts of the code compiled into the libraries or shipped with them.
+        for text in sorted((root / "third_party" / "licenses").glob("*.txt")):
+            shutil.copy2(text, stage / text.name)
+        gcc = gcc_version(args.build)
+        if gcc:
+            (stage / "GCC-RUNTIME-SOURCE.txt").write_text(runtime_source(plat, gcc), encoding="utf-8")
 
         args.out.mkdir(parents=True, exist_ok=True)
         files = []

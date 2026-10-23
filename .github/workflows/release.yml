@@ -27,8 +27,9 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+# Only the publish job writes; it asks for its own permissions.
 permissions:
-  contents: write
+  contents: read
 
 env:
   HDF5_VERSION: "1.14.6"
@@ -45,7 +46,7 @@ jobs:
           - os: macos-15-intel # Intel
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Tools (Linux)
         if: runner.os == 'Linux'
@@ -59,7 +60,7 @@ jobs:
 
       - name: Cache HDF5
         id: hdf5
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/hdf5
           key: hdf5-${{ env.HDF5_VERSION }}-${{ matrix.os }}-static-v1
@@ -88,7 +89,7 @@ jobs:
       - name: Package
         run: python3 tools/package_release.py --build build --out dist --version "${GITHUB_REF_NAME#v}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: swmm5plus-capi-${{ matrix.os }}
           path: dist/*
@@ -101,9 +102,9 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: msys2/setup-msys2@v2
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
         with:
           msystem: MINGW64
           update: true
@@ -117,7 +118,7 @@ jobs:
 
       - name: Cache HDF5
         id: hdf5
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ runner.temp }}/hdf5
           key: hdf5-${{ env.HDF5_VERSION }}-windows-mingw64-static-v1
@@ -151,7 +152,7 @@ jobs:
       - name: Package
         run: python tools/package_release.py --build build --out dist --version "${GITHUB_REF_NAME#v}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: swmm5plus-capi-windows
           path: dist/*
@@ -160,13 +161,28 @@ jobs:
     needs: [build, build-windows]
     runs-on: ubuntu-24.04
     if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write      # create the release
+      id-token: write      # sign the build provenance
+      attestations: write  # store it with the repository
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: dist
           merge-multiple: true
-      - uses: softprops/action-gh-release@v2
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum * > "swmm5plus-capi-${GITHUB_REF_NAME#v}-SHA256SUMS.txt"
+      # Lets anyone check that a download was built here from this tag:
+      #   gh attestation verify <file> --repo ehsanMa86/swmm5plus-capi
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*
+      # Releases are immutable once published, so prereleases, which the action
+      # would publish before uploading, are left as drafts to publish by hand.
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           files: dist/*
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-') }}
+          draft: ${{ contains(github.ref_name, '-') }}
