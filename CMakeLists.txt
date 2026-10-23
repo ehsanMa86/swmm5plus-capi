@@ -21,7 +21,7 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 cmake_minimum_required(VERSION 3.21)
-project(swmm5plus_capi VERSION 0.1.0
+project(swmm5plus_capi VERSION 0.2.1
     DESCRIPTION "C interface for the SWMM5+ finite-volume hydraulic solver"
     HOMEPAGE_URL "https://github.com/ehsanMa86/swmm5plus-capi"
     LANGUAGES C Fortran)
