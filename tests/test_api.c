@@ -150,6 +150,22 @@ static int on_report(int period, double seconds, void* user)
     return period == r->cancel_at ? 1 : 0;
 }
 
+static int copy_file(const char* from, const char* to)
+{
+    FILE* in = fopen(from, "rb");
+    FILE* out = in ? fopen(to, "wb") : NULL;
+    char buffer[4096];
+    size_t n;
+    int ok = in && out;
+    while (ok && (n = fread(buffer, 1, sizeof buffer, in)) > 0)
+        ok = fwrite(buffer, 1, n, out) == n;
+    if (in)
+        fclose(in);
+    if (out)
+        ok = fclose(out) == 0 && ok;
+    return ok;
+}
+
 static int check(int code, const char* what)
 {
     if (code != S5P_OK)
@@ -188,8 +204,17 @@ int main(int argc, char** argv)
     EXPECT(s5p_step(&t) == S5P_ERR_STATE);
     EXPECT(s5p_get_values(S5P_NODE, S5P_NODE_DEPTH, values, MAX_OBJECTS) == S5P_ERR_STATE);
 
+    /* The model runs from a copy that must be deletable once the model is
+     * closed: on Windows a file that SWMM5+ left open cannot be removed. */
     MKDIR(argv[3]);
-    if (check(s5p_open(argv[2], argv[3], NULL, argv[4]), "s5p_open"))
+    char input[1024];
+    snprintf(input, sizeof input, "%s/input.inp", argv[3]);
+    if (!copy_file(argv[2], input))
+    {
+        printf("FAILED: cannot copy %s to %s\n", argv[2], input);
+        return 1;
+    }
+    if (check(s5p_open(input, argv[3], NULL, argv[4]), "s5p_open"))
         return 1;
     if (check(s5p_initialize(), "s5p_initialize"))
         return 1;
@@ -296,6 +321,7 @@ int main(int argc, char** argv)
     EXPECT(s5p_get_values(S5P_NODE, S5P_NODE_DEPTH, values, MAX_OBJECTS) == S5P_ERR_STATE);
     EXPECT(s5p_step(&t) == S5P_ERR_STATE);
     s5p_close();
+    EXPECT(remove(input) == 0);
 
     printf("%d reports, %d time steps\n", r.reports, r.steps);
     if (failures == 0)

@@ -145,6 +145,14 @@ function(s5p_apply_hooks dir intel)
     s5p_replace("${dir}/initialization/initialization.f90"
         "        call util_crashstop(4429873)\n"
         "        call util_crashstop(4429873)\n        if (setting%Simulation%useHydrology) then\n            call init_subcatchment_elements()\n            call util_crashstop(4429874)\n        end if\n")
+    #    Upstream bug (all compilers): the search for [PROFILES] opens the input
+    #    file and returns without closing it when a model has no profiles. The
+    #    file stays open until the process ends; on Windows it then cannot be
+    #    deleted or replaced, so the temporary input file of a host program is
+    #    left behind.
+    s5p_replace("${dir}/initialization/initialization.f90"
+        "            print *, \"... no profiles found\"\n            return\n"
+        "            print *, \"... no profiles found\"\n            close (thisUnit)\n            return\n")
 
     # 3. Portable library loading, with a platform-specific library name.
     s5p_replace("${dir}/interface/interface.f90"
