@@ -16,7 +16,7 @@ s5p_open -> s5p_initialize -> s5p_step ... s5p_step  -> s5p_finalize -> s5p_clos
 | `int s5p_api_version(void)` | Interface version: `2`. |
 | `int s5p_version(char* buf, int len)` | SWMM5+ version string, for example `1.0.3`. |
 | `int s5p_set_console(int mode)` | *v2.* Where the text SWMM5+ and EPA SWMM print goes while the interface runs them: `S5P_CONSOLE_STDOUT` (default), `S5P_CONSOLE_STDERR` or `S5P_CONSOLE_NONE`. Allowed at any time, also before `s5p_open`. |
-| `int s5p_open(const char* inp, const char* output_dir, const char* settings, const char* swmm_library_dir)` | Prepares a run. Paths may be relative; they are made absolute. `output_dir`, `settings` and `swmm_library_dir` may be `NULL`. |
+| `int s5p_open(const char* inp, const char* output_dir, const char* settings, const char* swmm_library_dir)` | Prepares a run. Paths may be relative; they are made absolute. `output_dir`, `settings` and `swmm_library_dir` may be `NULL`. Returns `S5P_ERR_FILE` when the input file, the settings file or the library folder does not exist, and `S5P_ERR_ARGUMENT` when the input name lacks `.inp` or a path exceeds the 256 characters SWMM5+ can hold. |
 | `int s5p_set_progress_callback(s5p_progress_fn fn, void* user)` | Registers the per-step callback. `NULL` removes it. |
 | `int s5p_set_report_callback(s5p_report_fn fn, void* user)` | *v2.* Registers the reporting callback. `NULL` removes it. Allowed at any time. |
 | `int s5p_set_quiet(int quiet)` | Non-zero turns off the per-step console output of SWMM5+. Call before `s5p_initialize`. |
@@ -46,7 +46,7 @@ Values can be read from `s5p_initialize` until `s5p_finalize` (`S5P_ERR_STATE` o
 | node | `S5P_NODE_HEAD` | piezometric head |
 | node | `S5P_NODE_VOLUME` (v2) | stored volume |
 | node | `S5P_NODE_LATERAL_INFLOW` (v2) | external inflow, runoff and other lateral inflow |
-| node | `S5P_NODE_TOTAL_INFLOW` (v2) | lateral inflow plus inflow from links |
+| node | `S5P_NODE_TOTAL_INFLOW` (v2) | lateral inflow plus inflow from links; at an outfall, the flow leaving the network (backflow does not count) |
 | node | `S5P_NODE_FLOODING` (v2) | overflow rate leaving the network or entering a pond |
 | link | `S5P_LINK_FLOW` | flow rate (all barrels) |
 | link | `S5P_LINK_DEPTH` | flow depth |

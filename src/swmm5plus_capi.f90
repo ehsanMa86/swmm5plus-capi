@@ -44,6 +44,7 @@ module swmm5plus_capi
     integer, parameter :: S5P_ERR_STATE = 1
     integer, parameter :: S5P_ERR_ARGUMENT = 2
     integer, parameter :: S5P_ERR_CANCELLED = 3
+    integer, parameter :: S5P_ERR_FILE = 4
     integer, parameter :: S5P_END = 5
 
     integer, parameter :: OBJ_NODE = 0
@@ -116,6 +117,11 @@ module swmm5plus_capi
             integer(c_int), value :: length
             integer(c_int) :: rc
         end function c_absolute_path
+        function c_folder_exists(path) bind(C, name='s5p_fs_folder_exists') result(rc)
+            import :: c_char, c_int
+            character(kind=c_char), dimension(*), intent(in) :: path
+            integer(c_int) :: rc
+        end function c_folder_exists
         function c_symbol(handle, name) bind(C, name='s5p_dlsym') result(fp)
             import :: c_ptr, c_char, c_funptr
             type(c_ptr), value :: handle
@@ -397,11 +403,27 @@ contains
                     end do
                 end if
                 node_value = node_value + runoff_to_node(i)
-                !% --- plus the flow through the face, except at an upstream end,
-                !%     where that flow is the inflow boundary itself
                 if (property == NODE_TOTAL_INFLOW) then
                     node_value = max(0.0d0, node_value)
-                    if (node%I(i, ni_node_type) /= nBCup) node_value = node_value + abs(faceR(f, fr_Flowrate))
+                    select case (node%I(i, ni_node_type))
+                    case (nBCup, nJ1)
+                        !% --- the face is the inflow boundary itself (or a dead end), and
+                        !%     runoff enters the element downstream of it: nothing to add
+                    case (nBCdn)
+                        !% --- runoff enters the element upstream of the outfall face, so the
+                        !%     face flow already holds it; backflow from the outfall is not inflow
+                        node_value = max(0.0d0, faceR(f, fr_Flowrate))
+                    case default
+                        !% --- nJ2: SWMM5+ puts the lateral inflow into the link upstream of the
+                        !%     face, so the flow through the face already holds it; when the flow
+                        !%     is reversed it comes from the downstream link and the lateral
+                        !%     inflow is extra
+                        if (faceR(f, fr_Flowrate) >= 0.0d0) then
+                            node_value = faceR(f, fr_Flowrate)
+                        else
+                            node_value = node_value - faceR(f, fr_Flowrate)
+                        end if
+                    end select
                 end if
             end select
         end if
@@ -590,7 +612,9 @@ contains
     integer(c_int) function s5p_open(inp_file, output_dir, settings_file, swmm_library_dir) &
         bind(C, name='s5p_open')
         type(c_ptr), value :: inp_file, output_dir, settings_file, swmm_library_dir
-        character(len=:), allocatable :: inp
+        character(len=:), allocatable :: inp, output, settings, library
+        character(len=16) :: limit
+        logical :: exists
         if (state /= STATE_CLOSED) then
             s5p_open = fail(S5P_ERR_STATE, 's5p_open: a model is already open in this process')
             return
@@ -600,6 +624,44 @@ contains
             return
         end if
         inp = absolute_from_c(inp_file)
+        output = ''
+        settings = ''
+        library = ''
+        if (c_associated(output_dir)) output = absolute_from_c(output_dir)
+        if (c_associated(settings_file)) settings = absolute_from_c(settings_file)
+        if (c_associated(swmm_library_dir)) library = absolute_from_c(swmm_library_dir)
+        !% --- SWMM5+ stops the process (exit code 0) on a file it cannot find or an
+        !%     input name without ".inp", and its path fields hold 256 characters, so
+        !%     the paths are checked here and reported through the return code.
+        if (index(inp, '.inp', back=.true.) == 0) then
+            s5p_open = fail(S5P_ERR_ARGUMENT, 's5p_open: SWMM5+ needs an input file name that contains ".inp": ' // inp)
+            return
+        end if
+        if (len(inp) > len(setting%File%inp_file) .or. len(output) > len(setting%File%output_folder) .or. &
+            len(settings) > len(setting%File%setting_file) .or. len(library) > len(setting%File%library_folder)) then
+            write (limit, '(I0)') len(setting%File%inp_file)
+            s5p_open = fail(S5P_ERR_ARGUMENT, 's5p_open: a path is longer than the ' // trim(limit) // &
+                            ' characters SWMM5+ can hold (paths are made absolute)')
+            return
+        end if
+        inquire (file=inp, exist=exists)
+        if (.not. exists) then
+            s5p_open = fail(S5P_ERR_FILE, 's5p_open: the input file does not exist: ' // inp)
+            return
+        end if
+        if (len(settings) > 0) then
+            inquire (file=settings, exist=exists)
+            if (.not. exists) then
+                s5p_open = fail(S5P_ERR_FILE, 's5p_open: the settings file does not exist: ' // settings)
+                return
+            end if
+        end if
+        if (len(library) > 0) then
+            if (c_folder_exists(library // c_null_char) == 0) then
+                s5p_open = fail(S5P_ERR_FILE, 's5p_open: the SWMM library folder does not exist: ' // library)
+                return
+            end if
+        end if
         capi_active = .true.
         capi_cancelled = .false.
         capi_report_period = 0
@@ -607,9 +669,9 @@ contains
         capi_error_message = ''
         setting%File%inp_file = inp
         setting%File%project_folder = parent_folder(inp)
-        if (c_associated(output_dir)) setting%File%output_folder = absolute_from_c(output_dir)
-        if (c_associated(settings_file)) setting%File%setting_file = absolute_from_c(settings_file)
-        if (c_associated(swmm_library_dir)) setting%File%library_folder = absolute_from_c(swmm_library_dir)
+        if (len(output) > 0) setting%File%output_folder = output
+        if (len(settings) > 0) setting%File%setting_file = settings
+        if (len(library) > 0) setting%File%library_folder = library
         state = STATE_OPEN
         s5p_open = S5P_OK
     end function s5p_open

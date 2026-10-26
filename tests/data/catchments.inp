@@ -2,7 +2,8 @@
 ; https://github.com/ehsanMa86/swmm5plus-capi
 ;
 ; File:    tests/data/catchments.inp
-; Purpose: Short storm-sewer model with three subcatchments and US units, for the interface version 2 test.
+; Purpose: Short storm-sewer model with three subcatchments and US units, for the interface version 2 test
+;          (one subcatchment drains to the outfall and one inflow enters between two conduits).
 ;
 ; Copyright (C) 2026 Ehsan Madadi
 ;
@@ -70,7 +71,7 @@ RG1              INTENSITY 0:05     1.0      TIMESERIES Storm
 ;;Name           Rain Gage        Outlet           Area     %Imperv  Width    %Slope   CurbLen
 S1               RG1              J1               4        30       400      1.5      0
 S2               RG1              J2               6        60       600      1.0      0
-S3               RG1              J4               8        45       700      1.0      0
+S3               RG1              O1               8        45       700      1.0      0
 
 [SUBAREAS]
 ;;Subcatchment   N-Imperv   N-Perv     S-Imperv   S-Perv     PctZero    RouteTo
@@ -117,8 +118,11 @@ C6               CIRCULAR     1.25             0          0          0          
 
 [INFLOWS]
 ;;SWMM5+ needs an inflow at every upstream end node: a small base flow.
+;;J3 lies between two conduits and S3 drains to the outfall: inflows that
+;;SWMM5+ routes through the conduit upstream of the node.
 ;;Node           Constituent      Time Series      Type     Mfactor  Sfactor  Baseline Pattern
 J1               FLOW             ""               FLOW     1.0      1.0      0.05
+J3               FLOW             ""               FLOW     1.0      1.0      0.5
 J5               FLOW             ""               FLOW     1.0      1.0      0.05
 J6               FLOW             ""               FLOW     1.0      1.0      0.05
 

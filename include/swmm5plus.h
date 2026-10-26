@@ -151,7 +151,10 @@ S5P_API int s5p_version(char* buffer, int length);
 /**
  * Prepares a run. @p inp_file is required. @p output_dir, @p settings_file
  * (a SWMM5+ settings.json) and @p swmm_library_dir (folder of the bundled
- * EPA SWMM library) may be NULL to use defaults.
+ * EPA SWMM library) may be NULL to use defaults. Returns S5P_ERR_FILE when
+ * the input file, the settings file or the library folder does not exist,
+ * and S5P_ERR_ARGUMENT when the input name lacks ".inp" or a path is longer
+ * than SWMM5+ can hold (256 characters once made absolute).
  */
 S5P_API int s5p_open(const char* inp_file, const char* output_dir, const char* settings_file,
                      const char* swmm_library_dir);

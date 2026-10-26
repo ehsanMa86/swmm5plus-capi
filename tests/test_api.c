@@ -59,7 +59,7 @@ struct run
     double last_seconds;
     double report_step;
     double peak_rain, peak_runoff, peak_outflow, peak_sub_runoff[MAX_OBJECTS];
-    double runoff_volume, outflow_volume;
+    double runoff_volume, lateral_volume, outflow_volume;
     double last_flow[MAX_OBJECTS];
     double last_depth[MAX_OBJECTS];
     double last_runoff[MAX_OBJECTS];
@@ -119,9 +119,10 @@ static int on_report(int period, double seconds, void* user)
 
     const double rain = system_value(S5P_SYSTEM_RAINFALL);
     const double outflow = system_value(S5P_SYSTEM_OUTFLOW);
+    const double lateral = system_value(S5P_SYSTEM_LATERAL_INFLOW);
     EXPECT(system_value(S5P_SYSTEM_STORAGE) >= 0.0);
     EXPECT(system_value(S5P_SYSTEM_FLOODING) >= 0.0);
-    EXPECT(system_value(S5P_SYSTEM_LATERAL_INFLOW) >= -1e-9);
+    EXPECT(lateral >= -1e-9);
     EXPECT(system_value(S5P_SYSTEM_INFILTRATION) >= 0.0);
     EXPECT(system_value(S5P_SYSTEM_EVAPORATION) >= 0.0);
     if (rain > r->peak_rain)
@@ -131,6 +132,7 @@ static int on_report(int period, double seconds, void* user)
     if (outflow > r->peak_outflow)
         r->peak_outflow = outflow;
     r->runoff_volume += one * dt;
+    r->lateral_volume += lateral * dt;
     r->outflow_volume += outflow * dt;
 
     double node_values[MAX_OBJECTS], link_values[MAX_OBJECTS];
@@ -214,6 +216,23 @@ int main(int argc, char** argv)
         printf("FAILED: cannot copy %s to %s\n", argv[2], input);
         return 1;
     }
+    /* Paths are checked when the model is opened; SWMM5+ itself would end the
+     * process with exit code 0 on a missing file or a name without ".inp". */
+    char message[256] = "", missing[1024], longname[600];
+    snprintf(missing, sizeof missing, "%s/does-not-exist.inp", argv[3]);
+    EXPECT(s5p_open(missing, argv[3], NULL, argv[4]) == S5P_ERR_FILE);
+    EXPECT(s5p_last_error(message, (int)sizeof message) == S5P_OK && strstr(message, "does-not-exist.inp"));
+    snprintf(missing, sizeof missing, "%s/does-not-exist.txt", argv[3]);
+    EXPECT(s5p_open(missing, argv[3], NULL, argv[4]) == S5P_ERR_ARGUMENT);
+    memset(longname, 'a', sizeof longname - 5);
+    memcpy(longname + sizeof longname - 5, ".inp", 5);
+    EXPECT(s5p_open(longname, argv[3], NULL, argv[4]) == S5P_ERR_ARGUMENT);
+    snprintf(missing, sizeof missing, "%s/does-not-exist.json", argv[3]);
+    EXPECT(s5p_open(input, argv[3], missing, argv[4]) == S5P_ERR_FILE);
+    snprintf(missing, sizeof missing, "%s/no-such-folder", argv[3]);
+    EXPECT(s5p_open(input, argv[3], NULL, missing) == S5P_ERR_FILE);
+    EXPECT(s5p_step(&t) == S5P_ERR_STATE); /* still closed */
+
     if (check(s5p_open(input, argv[3], NULL, argv[4]), "s5p_open"))
         return 1;
     if (check(s5p_initialize(), "s5p_initialize"))
@@ -303,18 +322,35 @@ int main(int argc, char** argv)
         for (int i = 0; i < r.subcatchments; ++i)
             EXPECT(values[i] == r.last_runoff[i]);
 
+        /* The inflow at J3 (a node between two conduits) and the runoff of S3
+         * at the outfall enter the conduit upstream of the node, so the total
+         * inflow is the flow arriving through that conduit (C3 and C4), not
+         * that flow plus the inflow or runoff once more. Near the end of the
+         * run the flow is slowly receding, so the two agree closely. */
+        double inflow[MAX_OBJECTS];
+        EXPECT(s5p_get_values(S5P_NODE, S5P_NODE_TOTAL_INFLOW, inflow, MAX_OBJECTS) == S5P_OK);
+        printf("final total inflow J3 %.3f cfs (C3 %.3f cfs), O1 %.3f cfs (C4 %.3f cfs)\n", inflow[2],
+               r.last_flow[2], inflow[6], r.last_flow[3]);
+        EXPECT(fabs(inflow[2] - r.last_flow[2]) <= 0.05 + 0.2 * fabs(r.last_flow[2]));
+        EXPECT(fabs(inflow[6] - r.last_flow[3]) <= 0.05 + 0.2 * fabs(r.last_flow[3]));
+
         /* Plausible hydrology in US units: the storm peaks at 2.8 in/h over
          * 18 acres (at most about 51 cfs of runoff), the most impervious
          * subcatchment (S2) yields more runoff than S1, and most of the
-         * runoff volume has left through the outfall after two hours. */
+         * water that entered (runoff and the constant inflows) has left
+         * through the outfall after two hours, and no more than entered (the
+         * outflow would exceed it if S3, which drains straight to the
+         * outfall, were counted twice). */
         printf("peak rain %.3f in/h, peak runoff %.3f cfs, peak outflow %.3f cfs\n", r.peak_rain, r.peak_runoff,
                r.peak_outflow);
-        printf("runoff volume %.0f ft3, outflow volume %.0f ft3\n", r.runoff_volume, r.outflow_volume);
+        printf("runoff volume %.0f ft3, lateral inflow volume %.0f ft3, outflow volume %.0f ft3\n",
+               r.runoff_volume, r.lateral_volume, r.outflow_volume);
         EXPECT(r.peak_rain > 1.0 && r.peak_rain <= 2.8 + 1e-6);
         EXPECT(r.peak_runoff > 5.0 && r.peak_runoff < 51.0);
         EXPECT(r.peak_sub_runoff[1] > r.peak_sub_runoff[0]);
         EXPECT(r.peak_outflow > 0.5 * r.peak_runoff);
-        EXPECT(r.outflow_volume > 0.6 * r.runoff_volume && r.outflow_volume < 1.1 * r.runoff_volume);
+        EXPECT(r.lateral_volume > r.runoff_volume);
+        EXPECT(r.outflow_volume > 0.6 * r.lateral_volume && r.outflow_volume < 1.05 * r.lateral_volume);
     }
 
     EXPECT(check(s5p_finalize(), "s5p_finalize") == S5P_OK);
