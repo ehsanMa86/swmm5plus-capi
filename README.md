@@ -1,5 +1,7 @@
 # swmm5plus-capi
 
+[![CI](https://github.com/ehsanMa86/swmm5plus-capi/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ehsanMa86/swmm5plus-capi/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/ehsanMa86/swmm5plus-capi)](https://github.com/ehsanMa86/swmm5plus-capi/releases/latest) [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE) [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23678730.svg)](https://doi.org/10.5281/zenodo.23678730)
+
 A C interface for [SWMM5+](https://github.com/CIMM-ORG/SWMM5plus), the finite-volume dynamic-wave solver for the EPA Storm Water Management Model developed by CIMM at the University of Texas at Austin.
 
 SWMM5+ is a Fortran program. This project builds it as a shared library with a small, stable C API (`include/swmm5plus.h`), so that applications written in any language can load it like the other SWMM and EPANET engines. [Mirab](https://github.com/ehsanMa86/Mirab) uses it to offer SWMM5+ next to EPA SWMM 5.2.
@@ -90,6 +92,10 @@ Test models that point to absolute Windows paths in their `[FILES]` section (for
 ## Feedback and contributing
 
 Report problems and suggest features in [Issues](https://github.com/ehsanMa86/swmm5plus-capi/issues/new/choose); problems in the Mirab application belong in the [Mirab repository](https://github.com/ehsanMa86/Mirab/issues). Pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). Report security problems privately as described in [SECURITY.md](SECURITY.md). Thanks to Robert Dickinson for the review behind release 0.2.3.
+
+## Citing
+
+Each release is archived on Zenodo. Cite the version you used, or all versions with [10.5281/zenodo.23678730](https://doi.org/10.5281/zenodo.23678730); GitHub's *Cite this repository* button gives the reference from [CITATION.cff](CITATION.cff). Please also cite [SWMM5+](https://github.com/CIMM-ORG/SWMM5plus), the solver this library builds.
 
 ## License
 

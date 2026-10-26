@@ -1,0 +1,32 @@
+cff-version: 1.2.0
+message: "If you use swmm5plus-capi in your work, please cite it as below."
+type: software
+title: "swmm5plus-capi: a C interface for the SWMM5+ hydraulic solver"
+authors:
+  - family-names: Madadi
+    given-names: Ehsan
+license: GPL-3.0-or-later
+repository-code: "https://github.com/ehsanMa86/swmm5plus-capi"
+doi: 10.5281/zenodo.23678730
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.23678730
+    description: All versions (concept DOI); resolves to the latest version.
+abstract: >-
+  swmm5plus-capi builds SWMM5+, the finite-volume dynamic-wave solver for the
+  EPA Storm Water Management Model developed by CIMM at the University of Texas
+  at Austin, as a shared library with a small, stable C API, so applications
+  written in any language can run SWMM5+ models and read their results.
+keywords:
+  - SWMM5+
+  - SWMM
+  - stormwater
+  - dynamic wave routing
+  - finite volume
+  - C API
+references:
+  - type: software
+    title: SWMM5+
+    authors:
+      - name: CIMM, The University of Texas at Austin
+    repository-code: "https://github.com/CIMM-ORG/SWMM5plus"

@@ -1,0 +1,36 @@
+{
+  "title": "swmm5plus-capi: a C interface for the SWMM5+ hydraulic solver",
+  "upload_type": "software",
+  "description": "<p>swmm5plus-capi builds SWMM5+, the finite-volume dynamic-wave solver for the EPA Storm Water Management Model developed by CIMM at the University of Texas at Austin, as a shared library with a small, stable C API. Applications written in any language can load it like the other SWMM and EPANET engines: open a model, run it or step through it time step by time step, read node, link, subcatchment and system results, and receive progress and reporting callbacks.</p><p>The upstream SWMM5+, EPA SWMM 5.1.13 and json-fortran sources are downloaded at pinned commits with SHA-256 checksums and never edited in place; anchored build-time hooks add the API mode, the callbacks, a step mode and portable file handling, and replace Intel-only Fortran extensions so the solver builds with gfortran. Prebuilt libraries are published for Windows, Linux and macOS (Apple silicon and Intel). The Mirab application uses this library to offer SWMM5+ next to EPA SWMM 5.2.</p>",
+  "creators": [
+    {
+      "name": "Madadi, Ehsan"
+    }
+  ],
+  "contributors": [
+    {
+      "name": "Dickinson, Robert",
+      "type": "Other"
+    }
+  ],
+  "license": "gpl-3.0-or-later",
+  "keywords": [
+    "SWMM5+",
+    "SWMM",
+    "stormwater",
+    "urban drainage",
+    "dynamic wave routing",
+    "finite volume",
+    "hydraulic modeling",
+    "Fortran",
+    "C API",
+    "shared library"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/CIMM-ORG/SWMM5plus",
+      "relation": "isDerivedFrom",
+      "resource_type": "software"
+    }
+  ]
+}
