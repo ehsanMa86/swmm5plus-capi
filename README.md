@@ -89,7 +89,7 @@ Test models that point to absolute Windows paths in their `[FILES]` section (for
 
 ## Feedback and contributing
 
-Report problems and suggest features in [Issues](https://github.com/ehsanMa86/swmm5plus-capi/issues/new/choose); problems in the Mirab application belong in the [Mirab repository](https://github.com/ehsanMa86/Mirab/issues). Pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). Report security problems privately as described in [SECURITY.md](SECURITY.md).
+Report problems and suggest features in [Issues](https://github.com/ehsanMa86/swmm5plus-capi/issues/new/choose); problems in the Mirab application belong in the [Mirab repository](https://github.com/ehsanMa86/Mirab/issues). Pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). Report security problems privately as described in [SECURITY.md](SECURITY.md). Thanks to Robert Dickinson for the review behind release 0.2.3.
 
 ## License
 
